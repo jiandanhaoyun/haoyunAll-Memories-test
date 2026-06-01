@@ -315,11 +315,11 @@
 }
 
 .ai-wbr-memory-node-popover {
-    position: absolute;
-    z-index: 5;
+    position: fixed;
+    z-index: 30020;
     display: none;
     width: min(14rem, calc(100% - 1rem));
-    max-height: 12.5rem;
+    max-height: min(18rem, calc(100vh - 1rem));
     overflow: auto;
     padding: 0.45rem;
     border: 1px solid rgba(218, 199, 255, 0.48);

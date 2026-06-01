@@ -2443,7 +2443,6 @@ function renderMemoryGraphSvg(graph) {
             <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : '点击节点可编辑/连线，拖动节点可调整位置，滚轮缩放'}</span>
         </div>
         <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" role="img" aria-label="记忆图谱">${lines}${circles}</svg>
-        <div id="ai_wbr_memory_node_popover" class="ai-wbr-memory-node-popover"></div>
     `);
     bindMemoryGraphSvgInteractions();
 }
@@ -2462,7 +2461,11 @@ function updateMemoryGraphViewBox(svg) {
 function showMemoryNodePopover(nodeId, clientX, clientY) {
     const graph = getMemoryGraph();
     const node = graph.nodes.find(item => item.id === nodeId);
-    const popover = $('#ai_wbr_memory_node_popover');
+    let popover = $('#ai_wbr_memory_node_popover');
+    if (!popover.length) {
+        popover = $('<div id="ai_wbr_memory_node_popover" class="ai-wbr-memory-node-popover"></div>');
+        $('body').append(popover);
+    }
     if (!node || !popover.length) {
         return;
     }
@@ -2486,8 +2489,8 @@ function showMemoryNodePopover(nodeId, clientX, clientY) {
             </div>
         `)
         .css({
-            left: `${Math.min(Math.max(clientX - $('#ai_wbr_memory_graph').offset().left + 10, 8), $('#ai_wbr_memory_graph').width() - 236)}px`,
-            top: `${Math.min(Math.max(clientY - $('#ai_wbr_memory_graph').offset().top + 10, 46), $('#ai_wbr_memory_graph').height() - 170)}px`,
+            left: `${Math.min(Math.max(clientX + 12, 8), window.innerWidth - 244)}px`,
+            top: `${Math.min(Math.max(clientY + 12, 8), window.innerHeight - 210)}px`,
         })
         .show();
 }
@@ -2701,7 +2704,7 @@ function bindMemoryGraphSvgInteractions() {
     });
 
     container.on('click.memoryGraphSvg', function (event) {
-        if ($(event.target).closest('.ai-wbr-memory-node, .ai-wbr-memory-node-popover, .ai-wbr-memory-graph-toolbar').length) {
+        if ($(event.target).closest('.ai-wbr-memory-node, .ai-wbr-memory-graph-toolbar').length) {
             return;
         }
         $('#ai_wbr_memory_node_popover').hide();
@@ -2816,6 +2819,9 @@ function bindMemoryPanelActions() {
     });
 
     $('#ai_worldbook_router_settings')
+        .on('click', '#ai_wbr_memory_node_popover, #ai_wbr_memory_node_popover *', function (event) {
+            event.stopPropagation();
+        })
         .on('input change', '[data-memory-state-field]', function () {
             const graph = getMemoryGraph();
             const field = String($(this).data('memoryStateField'));
@@ -3315,6 +3321,7 @@ jQuery(async () => {
         eventSource.on(event_types.CHAT_CHANGED, () => {
             clearEntryBurst();
             stopWorldInfoAnimation();
+            $('#ai_wbr_memory_node_popover').hide();
             clearTimeout(memoryUpdateTimer);
             pendingCompatSend = false;
             suppressCompatReplay = false;
