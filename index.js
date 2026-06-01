@@ -24,6 +24,8 @@ const MAX_RECALL_TERMS = 32;
 const MAX_ROUTER_CONTEXT_PREVIEW = 360;
 const MAX_BURST_ITEMS = 5;
 const MAX_MEMORY_CONTEXT_PREVIEW = 260;
+const ROUTER_REQUEST_MAX_TOKENS = 10000;
+const MEMORY_REQUEST_MAX_TOKENS = 10000;
 const MEMORY_LINK_TYPES = new Set([
     'INVOLVES', 'PART_OF', 'HAPPENS_AT', 'FOLLOWS', 'UPDATES', 'OPPOSES',
     'ALLIED_WITH', 'CAUSES', 'RELATED', 'MENTIONS',
@@ -1711,13 +1713,13 @@ async function runMemoryGraphUpdate(reason = 'auto') {
             if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
                 raw = await sendSeparateMemoryRequest(context, prompt, {
                     systemPrompt: memorySystemPrompt,
-                    maxTokens: 560,
+                    maxTokens: MEMORY_REQUEST_MAX_TOKENS,
                 });
             } else {
                 raw = await context.generateRaw({
                     prompt,
                     systemPrompt: memorySystemPrompt,
-                    responseLength: 768,
+                    responseLength: MEMORY_REQUEST_MAX_TOKENS,
                     trimNames: false,
                 });
             }
@@ -1735,13 +1737,13 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
                     raw = await sendSeparateMemoryRequest(context, retryPrompt, {
                         systemPrompt: '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。',
-                        maxTokens: 420,
+                        maxTokens: MEMORY_REQUEST_MAX_TOKENS,
                     });
                 } else {
                     raw = await context.generateRaw({
                         prompt: retryPrompt,
                         systemPrompt: '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。',
-                        responseLength: 420,
+                        responseLength: MEMORY_REQUEST_MAX_TOKENS,
                         trimNames: false,
                     });
                 }
@@ -2409,7 +2411,7 @@ function hasEmptyVisibleContentDueToLength(rawResponse) {
 
 function buildPlainSeparateChatPayload(prompt, {
     systemPrompt = settings.systemPrompt,
-    maxTokens = Math.max(settings.aiResponseLength, 384),
+    maxTokens = ROUTER_REQUEST_MAX_TOKENS,
 } = {}) {
     return {
         stream: false,
@@ -2447,7 +2449,7 @@ async function sendSeparateRouterRequest(context, prompt, {
     mvuSummary = '',
     candidates = [],
     systemPrompt = settings.systemPrompt,
-    maxTokens = Math.max(settings.aiResponseLength, 384),
+    maxTokens = ROUTER_REQUEST_MAX_TOKENS,
 } = {}) {
     const firstRequest = buildPlainSeparateChatPayload(prompt, {
         systemPrompt,
@@ -2465,7 +2467,7 @@ async function sendSeparateRouterRequest(context, prompt, {
     );
     const retryRequest = buildPlainSeparateChatPayload(compactPrompt, {
         systemPrompt: '你是前置世界书路由 JSON 输出器。禁止解释，禁止 reasoning，只输出 {"selected":[...]}。',
-        maxTokens: Math.min(Math.max(settings.aiResponseLength, 180), 220),
+        maxTokens: ROUTER_REQUEST_MAX_TOKENS,
     });
     raw = await sendPlainSeparateChatRequest(context, retryRequest);
     return { raw, usedRetry: true, usedCompactPrompt: true, retryPrompt: compactPrompt };
@@ -2473,7 +2475,7 @@ async function sendSeparateRouterRequest(context, prompt, {
 
 async function sendSeparateMemoryRequest(context, prompt, {
     systemPrompt,
-    maxTokens,
+    maxTokens = MEMORY_REQUEST_MAX_TOKENS,
 } = {}) {
     const requestData = buildPlainSeparateChatPayload(prompt, {
         systemPrompt,
@@ -2485,7 +2487,7 @@ async function sendSeparateMemoryRequest(context, prompt, {
 function getRouterRequestData(context, prompt) {
     return buildPlainSeparateChatPayload(prompt, {
         systemPrompt: settings.systemPrompt,
-        maxTokens: Math.max(settings.aiResponseLength, 384),
+        maxTokens: ROUTER_REQUEST_MAX_TOKENS,
     });
 }
 
@@ -2496,7 +2498,7 @@ async function selectWithSeparateRouterModel(context, recentMessages, mvuSummary
         mvuSummary,
         candidates,
         systemPrompt: settings.systemPrompt,
-        maxTokens: Math.max(settings.aiResponseLength, 384),
+        maxTokens: ROUTER_REQUEST_MAX_TOKENS,
     });
     const promptForParse = result.usedCompactPrompt ? `${prompt}\n\n----- COMPACT RETRY PROMPT -----\n\n${result.retryPrompt}` : prompt;
     const parsed = parseSelectionJson(result.raw, candidates, promptForParse);
@@ -2521,7 +2523,7 @@ async function runSingleAiSelectionAttempt(context, recentMessages, mvuSummary, 
         const raw = await context.generateRaw({
             prompt,
             systemPrompt: settings.systemPrompt,
-            responseLength: settings.aiResponseLength,
+            responseLength: ROUTER_REQUEST_MAX_TOKENS,
             trimNames: false,
             jsonSchema: getSelectionSchema(),
         });
