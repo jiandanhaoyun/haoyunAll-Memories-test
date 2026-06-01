@@ -1563,12 +1563,11 @@ async function runMemoryGraphUpdate(reason = 'auto') {
         try {
             isRouterSelectionRequest = true;
             if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
-                const data = getSeparateModelRequestData(context, prompt, {
+                raw = await sendSeparateModelWithFallback(context, prompt, {
                     systemPrompt: memorySystemPrompt,
                     maxTokens: 1024,
                     jsonSchema: getMemoryExtractionSchema(),
                 });
-                raw = await context.ChatCompletionService.sendRequest(data, true);
             } else {
                 raw = await context.generateRaw({
                     prompt,
@@ -2154,6 +2153,32 @@ function getRouterMessages(prompt, systemPrompt = settings.systemPrompt) {
     ];
 }
 
+function isEffectivelyEmptyStructuredResponse(rawResponse) {
+    if (rawResponse == null) {
+        return true;
+    }
+
+    if (typeof rawResponse === 'string') {
+        return !rawResponse.trim();
+    }
+
+    if (typeof rawResponse !== 'object') {
+        return false;
+    }
+
+    const content = rawResponse.content;
+    if (content && typeof content === 'object' && !Array.isArray(content) && !Object.keys(content).length) {
+        return true;
+    }
+
+    const texts = collectRouterResponseTexts(rawResponse);
+    if (!texts.length && !Object.keys(rawResponse).length) {
+        return true;
+    }
+
+    return false;
+}
+
 function getSeparateModelRequestData(context, prompt, {
     systemPrompt = settings.systemPrompt,
     maxTokens = Math.max(settings.aiResponseLength, 384),
@@ -2172,6 +2197,29 @@ function getSeparateModelRequestData(context, prompt, {
     });
 }
 
+async function sendSeparateModelWithFallback(context, prompt, {
+    systemPrompt = settings.systemPrompt,
+    maxTokens = Math.max(settings.aiResponseLength, 384),
+    jsonSchema = getSelectionSchema(),
+} = {}) {
+    const firstRequest = getSeparateModelRequestData(context, prompt, {
+        systemPrompt,
+        maxTokens,
+        jsonSchema,
+    });
+    let raw = await context.ChatCompletionService.sendRequest(firstRequest, true);
+    if (!isEffectivelyEmptyStructuredResponse(raw)) {
+        return raw;
+    }
+
+    const fallbackRequest = getSeparateModelRequestData(context, prompt, {
+        systemPrompt,
+        maxTokens,
+        jsonSchema: undefined,
+    });
+    return await context.ChatCompletionService.sendRequest(fallbackRequest, true);
+}
+
 function getRouterRequestData(context, prompt) {
     return getSeparateModelRequestData(context, prompt, {
         systemPrompt: settings.systemPrompt,
@@ -2182,8 +2230,11 @@ function getRouterRequestData(context, prompt) {
 
 async function selectWithSeparateRouterModel(context, recentMessages, mvuSummary, candidates) {
     const prompt = buildAiPrompt(recentMessages, mvuSummary, candidates);
-    const data = getRouterRequestData(context, prompt);
-    const result = await context.ChatCompletionService.sendRequest(data, true);
+    const result = await sendSeparateModelWithFallback(context, prompt, {
+        systemPrompt: settings.systemPrompt,
+        maxTokens: Math.max(settings.aiResponseLength, 384),
+        jsonSchema: getSelectionSchema(),
+    });
     const parsed = parseSelectionJson(result, candidates, prompt);
     return {
         parsed,
