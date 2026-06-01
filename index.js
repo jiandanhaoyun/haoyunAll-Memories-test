@@ -2276,22 +2276,37 @@ async function sendSeparateModelWithFallback(context, prompt, {
     maxTokens = Math.max(settings.aiResponseLength, 384),
     jsonSchema = getSelectionSchema(),
 } = {}) {
-    const firstRequest = getSeparateModelRequestData(context, prompt, {
-        systemPrompt,
-        maxTokens,
-        jsonSchema,
-    });
-    let raw = await context.ChatCompletionService.sendRequest(firstRequest, true);
+    const sendOnce = async (schema) => {
+        const requestData = getSeparateModelRequestData(context, prompt, {
+            systemPrompt,
+            maxTokens,
+            jsonSchema: schema,
+        });
+
+        const response = await fetch('/api/backends/chat-completions/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(typeof context.getRequestHeaders === 'function' ? context.getRequestHeaders() : {}),
+            },
+            cache: 'no-cache',
+            body: JSON.stringify(requestData),
+        });
+
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch {
+            return text;
+        }
+    };
+
+    let raw = await sendOnce(jsonSchema);
     if (!isEffectivelyEmptyStructuredResponse(raw)) {
         return raw;
     }
 
-    const fallbackRequest = getSeparateModelRequestData(context, prompt, {
-        systemPrompt,
-        maxTokens,
-        jsonSchema: undefined,
-    });
-    return await context.ChatCompletionService.sendRequest(fallbackRequest, true);
+    return await sendOnce(undefined);
 }
 
 function getRouterRequestData(context, prompt) {
