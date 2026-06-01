@@ -133,6 +133,11 @@
                     <span class="fa-solid fa-circle-info ai-wbr-help" title="把当前记忆状态摘要加入前置世界书路由输入，帮助下一轮更稳定命中相关条目。"></span>
                     <span>记忆状态参与世界书路由</span>
                 </label>
+                <label class="checkbox_label" for="ai_wbr_memory_debug">
+                    <input id="ai_wbr_memory_debug" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="显示后置记忆整理发给 AI 的 Prompt、AI 原始返回和解析错误，方便排查。"></span>
+                    <span>记忆调试模式</span>
+                </label>
 
                 <div class="ai-wbr-grid">
                     <label for="ai_wbr_memory_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理读取最近多少条聊天消息。只用于总结，不影响主模型历史楼层限制。"></span>记忆整理读取消息数</label>
@@ -159,6 +164,20 @@
                 <div class="ai-wbr-router-raw-block">
                     <div><b>记忆图谱 JSON</b></div>
                     <textarea id="ai_wbr_memory_json" class="text_pole ai-wbr-memory-json" rows="9"></textarea>
+                </div>
+                <div id="ai_wbr_memory_debug_panel" class="ai-wbr-memory-debug-panel">
+                    <div class="ai-wbr-router-raw-block">
+                        <div><b>后置记忆 Prompt</b></div>
+                        <pre id="ai_wbr_memory_prompt" class="ai-wbr-router-raw">尚无后置记忆 Prompt</pre>
+                    </div>
+                    <div class="ai-wbr-router-raw-block">
+                        <div><b>后置记忆 AI 原始返回</b></div>
+                        <pre id="ai_wbr_memory_raw" class="ai-wbr-router-raw">尚无后置记忆返回</pre>
+                    </div>
+                    <div class="ai-wbr-router-raw-block">
+                        <div><b>后置记忆解析错误</b></div>
+                        <pre id="ai_wbr_memory_error" class="ai-wbr-router-raw">尚无错误</pre>
+                    </div>
                 </div>
             </div>
 

@@ -320,6 +320,10 @@
     resize: vertical;
 }
 
+.ai-wbr-memory-debug-panel {
+    display: none;
+}
+
 .ai-wbr-prompt {
     min-height: 7rem;
     resize: vertical;

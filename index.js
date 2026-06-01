@@ -74,12 +74,16 @@ const defaultSettings = {
     memoryEnabled: false,
     memoryAutoRun: true,
     memoryInjectToRouter: true,
+    memoryDebug: false,
     memoryScanMessages: 6,
     memoryMaxNodes: 60,
     memoryMaxLinks: 120,
     memoryGraph: null,
     memoryLastTurnSignature: '',
     memoryStatus: '未启用',
+    memoryLastPrompt: '',
+    memoryLastRaw: '',
+    memoryLastError: '',
     keywordRecall: true,
     useMvu: false,
     allowConstant: false,
@@ -1523,6 +1527,11 @@ async function runMemoryGraphUpdate(reason = 'auto') {
     try {
         const graph = getMemoryGraph();
         const prompt = buildMemoryExtractionPrompt(recentMessages, graph);
+        settings.memoryLastPrompt = prompt;
+        settings.memoryLastRaw = '';
+        settings.memoryLastError = '';
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
         const memorySystemPrompt = '你是严格 JSON 输出的长期记忆图谱整理器。不要输出 Markdown，不要解释。';
         let raw;
         try {
@@ -1546,6 +1555,10 @@ async function runMemoryGraphUpdate(reason = 'auto') {
         } finally {
             isRouterSelectionRequest = false;
         }
+        settings.memoryLastRaw = summarizeRouterResponse(raw);
+        settings.memoryLastError = '';
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
         const update = parseMemoryUpdate(raw, prompt);
         applyMemoryGraphUpdate(update);
         settings.memoryLastTurnSignature = signature;
@@ -1559,6 +1572,15 @@ async function runMemoryGraphUpdate(reason = 'auto') {
         return true;
     } catch (error) {
         console.warn(`${LOG_PREFIX} Memory graph update failed`, error);
+        settings.memoryLastError = error?.message || String(error);
+        if (error?.routerRaw && !settings.memoryLastRaw) {
+            settings.memoryLastRaw = error.routerRaw;
+        }
+        if (error?.routerPrompt && !settings.memoryLastPrompt) {
+            settings.memoryLastPrompt = error.routerPrompt;
+        }
+        Object.assign(extension_settings[MODULE_NAME], settings);
+        saveSettingsDebounced();
         setMemoryStatus(`记忆失败：${truncateText(error?.message || error, 80)}`);
         playStatusBurst('×', 'fail');
         stopMemoryAnimation(false);
@@ -2375,6 +2397,10 @@ function renderMemoryPanel() {
     const graph = getMemoryGraph();
     $('#ai_wbr_memory_status').text(settings.memoryStatus || (settings.memoryEnabled ? '待整理' : '未启用'));
     $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+    $('#ai_wbr_memory_debug_panel').toggle(!!settings.memoryDebug);
+    $('#ai_wbr_memory_prompt').text(settings.memoryLastPrompt || '尚无后置记忆 Prompt');
+    $('#ai_wbr_memory_raw').text(settings.memoryLastRaw || '尚无后置记忆返回');
+    $('#ai_wbr_memory_error').text(settings.memoryLastError || '尚无错误');
     renderMemoryGraphSvg(graph);
 
     const state = graph.state || {};
@@ -2434,6 +2460,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_enabled', 'memoryEnabled');
     bindCheckbox('#ai_wbr_memory_auto_run', 'memoryAutoRun');
     bindCheckbox('#ai_wbr_memory_inject_to_router', 'memoryInjectToRouter');
+    bindCheckbox('#ai_wbr_memory_debug', 'memoryDebug');
     bindNumber('#ai_wbr_memory_scan_messages', 'memoryScanMessages', 2, 40);
     bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
     bindNumber('#ai_wbr_memory_max_links', 'memoryMaxLinks', 0, 400);
