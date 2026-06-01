@@ -1295,9 +1295,31 @@ ${recentContext || '(空)'}
 }
 
 function parseMemoryUpdate(rawResponse, prompt = '') {
+    const looksLikeMemoryPayload = (value) => {
+        return value && typeof value === 'object' && !Array.isArray(value) && (
+            value.state !== undefined
+            || value.nodes !== undefined
+            || value.updates !== undefined
+            || value.links !== undefined
+            || value.summary !== undefined
+        );
+    };
+
     if (rawResponse && typeof rawResponse === 'object' && !Array.isArray(rawResponse)) {
-        if (rawResponse.state || rawResponse.nodes || rawResponse.updates || rawResponse.links || rawResponse.summary !== undefined) {
+        if (looksLikeMemoryPayload(rawResponse)) {
             return rawResponse;
+        }
+
+        if (looksLikeMemoryPayload(rawResponse.content)) {
+            return rawResponse.content;
+        }
+
+        if (looksLikeMemoryPayload(rawResponse.message?.content)) {
+            return rawResponse.message.content;
+        }
+
+        if (looksLikeMemoryPayload(rawResponse.choices?.[0]?.message?.content)) {
+            return rawResponse.choices[0].message.content;
         }
     }
 
