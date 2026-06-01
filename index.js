@@ -2424,8 +2424,8 @@ function renderMemoryGraphSvg(graph) {
         const position = positions.get(node.id);
         const colorClass = `ai-wbr-memory-node-${escapeHtml(String(node.type || 'event').toLowerCase())}`;
         return `<g class="ai-wbr-memory-node ${colorClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
-            <circle r="${18 + (Number(node.importance || 0.5) * 8)}"></circle>
-            <text y="${32 + (Number(node.importance || 0.5) * 4)}">${escapeHtml(truncateText(node.title, 12))}</text>
+            <circle r="${24 + (Number(node.importance || 0.5) * 10)}"></circle>
+            <text y="${40 + (Number(node.importance || 0.5) * 5)}">${escapeHtml(truncateText(node.title, 16))}</text>
             <title>${escapeHtml(`${node.title}\n${node.content || ''}`)}</title>
         </g>`;
     }).join('');
@@ -2473,10 +2473,10 @@ function showMemoryNodePopover(nodeId, clientX, clientY) {
     popover
         .attr('data-memory-node-id', node.id)
         .html(`
-            <div class="ai-wbr-memory-popover-title">${escapeHtml(node.title || node.id)}</div>
+            <div class="ai-wbr-memory-popover-title">${escapeHtml(truncateText(node.title || node.id, 38))}</div>
             <label>标题<input class="text_pole" type="text" data-popover-node-field="title" value="${escapeHtml(node.title || '')}" /></label>
             <label>类型<input class="text_pole" type="text" data-popover-node-field="type" value="${escapeHtml(node.type || 'event')}" /></label>
-            <label>内容<textarea class="text_pole" rows="3" data-popover-node-field="content">${escapeHtml(node.content || '')}</textarea></label>
+            <label>内容<textarea class="text_pole" rows="2" data-popover-node-field="content">${escapeHtml(node.content || '')}</textarea></label>
             <div class="ai-wbr-memory-popover-actions">
                 <button class="menu_button ai-wbr-memory-popover-save" type="button">保存</button>
                 <button class="menu_button ai-wbr-memory-set-link-source" type="button">设为起点</button>
@@ -2485,8 +2485,8 @@ function showMemoryNodePopover(nodeId, clientX, clientY) {
             </div>
         `)
         .css({
-            left: `${Math.min(Math.max(clientX - $('#ai_wbr_memory_graph').offset().left + 12, 8), $('#ai_wbr_memory_graph').width() - 290)}px`,
-            top: `${Math.min(Math.max(clientY - $('#ai_wbr_memory_graph').offset().top + 12, 38), $('#ai_wbr_memory_graph').height() - 220)}px`,
+            left: `${Math.min(Math.max(clientX - $('#ai_wbr_memory_graph').offset().left + 10, 8), $('#ai_wbr_memory_graph').width() - 236)}px`,
+            top: `${Math.min(Math.max(clientY - $('#ai_wbr_memory_graph').offset().top + 10, 46), $('#ai_wbr_memory_graph').height() - 170)}px`,
         })
         .show();
 }
