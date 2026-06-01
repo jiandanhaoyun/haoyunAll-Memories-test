@@ -65,6 +65,7 @@ const defaultSettings = {
     maxSelected: 5,
     maxChars: 4000,
     scanMessages: 8,
+    mainHistoryAiTurns: 0,
     keywordRecall: true,
     useMvu: false,
     allowConstant: false,
@@ -784,6 +785,50 @@ function injectIntoGenerationPayload(payload, injection) {
     return false;
 }
 
+function trimMainGenerationMessages(messages) {
+    if (!Array.isArray(messages)) {
+        return { changed: false, trimmedCount: 0 };
+    }
+
+    const maxAssistantTurns = clampNumber(settings.mainHistoryAiTurns, 0, 0, 100);
+    if (maxAssistantTurns <= 0) {
+        return { changed: false, trimmedCount: 0 };
+    }
+
+    const assistantIndexes = [];
+    for (let index = 0; index < messages.length; index += 1) {
+        if (String(messages[index]?.role || '').toLowerCase() === 'assistant') {
+            assistantIndexes.push(index);
+        }
+    }
+
+    if (assistantIndexes.length <= maxAssistantTurns) {
+        return { changed: false, trimmedCount: 0 };
+    }
+
+    let startIndex = assistantIndexes[assistantIndexes.length - maxAssistantTurns];
+    while (startIndex > 0 && String(messages[startIndex - 1]?.role || '').toLowerCase() === 'user') {
+        startIndex -= 1;
+    }
+
+    const trimmedMessages = messages.filter((message, index) => {
+        const role = String(message?.role || '').toLowerCase();
+        if (role !== 'user' && role !== 'assistant') {
+            return true;
+        }
+
+        return index >= startIndex;
+    });
+
+    const trimmedCount = messages.length - trimmedMessages.length;
+    if (trimmedCount <= 0) {
+        return { changed: false, trimmedCount: 0 };
+    }
+
+    messages.splice(0, messages.length, ...trimmedMessages);
+    return { changed: true, trimmedCount };
+}
+
 function installFetchFallbackHook() {
     if (fetchFallbackInstalled || typeof globalThis.fetch !== 'function') {
         return;
@@ -796,7 +841,7 @@ function installFetchFallbackHook() {
         }
 
         const body = getPayloadBody(init);
-        if (!body || body.includes('[本轮相关世界书]') || Date.now() - lastRouteCompletedAt < 3000) {
+        if (!body) {
             return originalFetch(input, init);
         }
 
@@ -807,15 +852,37 @@ function installFetchFallbackHook() {
             return originalFetch(input, init);
         }
 
+        const context = getContext();
+        const recentMessages = buildFetchFallbackMessages(context, payload);
+        const trimResult = trimMainGenerationMessages(payload.messages);
+        const shouldSkipRouting = body.includes('[本轮相关世界书]') || Date.now() - lastRouteCompletedAt < 3000;
+
+        if (shouldSkipRouting) {
+            if (trimResult.changed) {
+                debugLog('Trimmed main generation history without rerouting', {
+                    url: getFetchUrl(input),
+                    trimmedCount: trimResult.trimmedCount,
+                    remainingMessages: payload.messages?.length ?? 0,
+                });
+                return originalFetch(input, {
+                    ...init,
+                    body: JSON.stringify(payload),
+                });
+            }
+
+            return originalFetch(input, init);
+        }
+
         const endRouterBusy = beginRouterBusy();
         clearEntryBurst();
         startWorldInfoAnimation();
 
         try {
-            const context = getContext();
-            const recentMessages = buildFetchFallbackMessages(context, payload);
             if (!recentMessages.length) {
-                return originalFetch(input, init);
+                return originalFetch(input, trimResult.changed ? {
+                    ...init,
+                    body: JSON.stringify(payload),
+                } : init);
             }
 
             const result = await routeWorldbookForMessages(context, recentMessages, 'fetch_fallback', {
@@ -835,6 +902,7 @@ function installFetchFallbackHook() {
                 url: getFetchUrl(input),
                 selected: result.selected.length,
                 chars: result.injection.length,
+                trimmedCount: trimResult.trimmedCount,
             });
 
             return originalFetch(input, {
@@ -2057,6 +2125,7 @@ async function addSettingsUi() {
     bindNumber('#ai_wbr_max_selected', 'maxSelected', 1, 50);
     bindNumber('#ai_wbr_max_chars', 'maxChars', 100, 30000);
     bindNumber('#ai_wbr_scan_messages', 'scanMessages', 1, 50);
+    bindNumber('#ai_wbr_main_history_ai_turns', 'mainHistoryAiTurns', 0, 100);
     bindNumber('#ai_wbr_depth', 'depth', 0, 1000);
     bindNumber('#ai_wbr_ai_response_length', 'aiResponseLength', 32, 16384);
     bindNumber('#ai_wbr_router_retries', 'routerRetries', 0, 5);

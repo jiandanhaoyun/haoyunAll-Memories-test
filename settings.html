@@ -82,6 +82,9 @@
                 <label for="ai_wbr_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="用于关键词匹配和 AI 判断的最近聊天消息数量。剧情连续时可适当调高。"></span>扫描最近消息数</label>
                 <input id="ai_wbr_scan_messages" class="text_pole" type="number" min="1" max="50" step="1" />
 
+                <label for="ai_wbr_main_history_ai_turns"><span class="fa-solid fa-circle-info ai-wbr-help" title="限制主模型正式生成时保留的历史 AI 回复楼数。仅计算 assistant 回复，不计算用户消息；角色卡、破限、系统提示、世界书注入不受影响。填 0 表示不限制。"></span>主模型历史AI楼层数</label>
+                <input id="ai_wbr_main_history_ai_turns" class="text_pole" type="number" min="0" max="100" step="1" />
+
                 <label for="ai_wbr_position"><span class="fa-solid fa-circle-info ai-wbr-help" title="控制筛选出的世界书块插入 prompt 的位置。通常推荐 In-chat 深度注入。"></span>注入位置</label>
                 <select id="ai_wbr_position" class="text_pole">
                     <option value="1">In-chat 深度注入</option>
