@@ -1244,15 +1244,19 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 
     return `你是 SillyTavern 的后置轻量记忆图谱整理器。
 
-目标：从“最近对话”里提取对长期角色扮演/剧情推进有价值的稳定信息，并以结构化 JSON 更新记忆图谱。
+目标：从“最近对话”里提取对长期角色扮演/剧情推进有价值的信息，并以结构化 JSON 更新记忆图谱。
 
-只保存：
+必须保存：
+- 如果本轮出现了剧情推进、角色互动、地点变化、任务变化、世界观设定、重要承诺、冲突、发现、战斗、交易、关系变化，至少创建 1 个 event/quest/character/location 节点。
+- 角色扮演和故事场景里，即使只是“一段互动”，只要会影响后续扮演，也应保存为压缩事件节点。
+
+优先保存：
 - 已确认的角色、地点、势力、物品、规则、任务、关键事件。
 - 当前地点、当前目标、活跃主题、未解问题。
 - 有明确证据的关系边。
 
 不要保存：
-- 普通常识、一次性寒暄、纯风格描写、未发生的计划、没有证据的猜测。
+- 普通常识、纯格式说明、无内容寒暄、纯风格描写、未发生的计划、没有证据的猜测。
 - 与已有节点语义相同的新节点；这种情况用 updates。
 
 现有记忆图谱：
@@ -1280,10 +1284,10 @@ ${recentContext || '(空)'}
   ],
   "remove_node_ids": [],
   "remove_link_ids": [],
-  "summary": "本轮对长期状态有价值的极简摘要；无价值则为空字符串"
+  "summary": "本轮对长期状态有价值的极简摘要；如果创建了节点，这里必须概括节点依据"
 }
 
-如果本轮没有长期价值，返回 {"summary":""}。`;
+只有在最近对话确实只是问候、空回复、报错噪声、没有剧情/设定/任务信息时，才返回 {"summary":""}。`;
 }
 
 function parseMemoryUpdate(rawResponse, prompt = '') {
@@ -1338,6 +1342,7 @@ function resolveMemoryNodeId(value, graph) {
 function applyMemoryGraphUpdate(update) {
     const graph = getMemoryGraph();
     const now = new Date().toISOString();
+    let addedOrUpdatedNodeCount = 0;
 
     const state = update?.state && typeof update.state === 'object' ? update.state : {};
     if (typeof state.current_location === 'string') {
@@ -1376,9 +1381,11 @@ function applyMemoryGraphUpdate(update) {
                 updatedAt: now,
             });
             byId.set(existing.id, existing);
+            addedOrUpdatedNodeCount += 1;
         } else {
             graph.nodes.push(node);
             byId.set(node.id, node);
+            addedOrUpdatedNodeCount += 1;
         }
     }
 
@@ -1402,6 +1409,22 @@ function applyMemoryGraphUpdate(update) {
             existing.credibility = clampNumber(rawUpdate.credibility, existing.credibility || 0.8, 0, 1);
         }
         existing.updatedAt = now;
+        addedOrUpdatedNodeCount += 1;
+    }
+
+    if (!addedOrUpdatedNodeCount && typeof update?.summary === 'string' && update.summary.trim()) {
+        const fallbackTitle = truncateText(update.summary.trim().split(/[。.!?\n]/u)[0] || '本轮关键事件', 48);
+        const fallbackNode = normalizeMemoryNode({
+            id: `event_${Date.now().toString(36)}`,
+            title: fallbackTitle,
+            type: 'event',
+            content: update.summary.trim(),
+            tags: ['自动摘要'],
+            importance: 0.55,
+            credibility: 0.75,
+        }, byId.size);
+        graph.nodes.push(fallbackNode);
+        byId.set(fallbackNode.id, fallbackNode);
     }
 
     graph.nodes = graph.nodes
