@@ -3649,7 +3649,7 @@ function renderMemoryGraphSvg(graph) {
             <button class="menu_button ai-wbr-memory-zoom-reset" type="button">重置视图</button>
             <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
         </div>
-        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" role="img" aria-label="记忆图谱">${lines}${cards}</svg>
+        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${lines}${cards}</svg>
     `);
     bindMemoryGraphSvgInteractions();
 }
@@ -3697,10 +3697,12 @@ function clampMemoryNodePosition(x, y, canvasWidth = MEMORY_GRAPH_CANVAS_WIDTH, 
 
 function clampMemoryNodePositionToView(x, y, view = memoryGraphView, topPadding = 0) {
     const safeTop = Math.max(0, Number(topPadding || 0));
-    const minX = Number(view?.x || 0) + MEMORY_GRAPH_SAFE_PADDING;
-    const minY = Number(view?.y || 0) + safeTop + MEMORY_GRAPH_SAFE_PADDING;
-    const maxX = Number(view?.x || 0) + Number(view?.width || MEMORY_GRAPH_CANVAS_WIDTH) - MEMORY_GRAPH_NODE_WIDTH - MEMORY_GRAPH_SAFE_PADDING;
-    const maxY = Number(view?.y || 0) + Number(view?.height || MEMORY_GRAPH_CANVAS_HEIGHT) - MEMORY_GRAPH_NODE_HEIGHT - MEMORY_GRAPH_SAFE_PADDING;
+    const overflowAllowanceX = MEMORY_GRAPH_NODE_WIDTH * 0.45;
+    const overflowAllowanceY = MEMORY_GRAPH_NODE_HEIGHT * 0.45;
+    const minX = Number(view?.x || 0) - overflowAllowanceX;
+    const minY = Number(view?.y || 0) + safeTop - overflowAllowanceY;
+    const maxX = Number(view?.x || 0) + Number(view?.width || MEMORY_GRAPH_CANVAS_WIDTH) - MEMORY_GRAPH_NODE_WIDTH + overflowAllowanceX;
+    const maxY = Number(view?.y || 0) + Number(view?.height || MEMORY_GRAPH_CANVAS_HEIGHT) - MEMORY_GRAPH_NODE_HEIGHT + overflowAllowanceY;
     return {
         x: Math.min(maxX, Math.max(minX, Number(x || 0))),
         y: Math.min(maxY, Math.max(minY, Number(y || 0))),
