@@ -407,6 +407,15 @@ function startWorldInfoAnimation() {
     });
 }
 
+function startMemoryAnimation() {
+    startWorldInfoAnimation();
+    const underline = $('#ai_wbr_fx_layer .ai-wbr-book-underline');
+    if (!underline.length) {
+        return;
+    }
+    underline.addClass('ai-wbr-book-underline-memory');
+}
+
 function stopWorldInfoAnimation() {
     const underline = $('#ai_wbr_fx_layer .ai-wbr-book-underline');
     if (!underline.length) {
@@ -469,7 +478,22 @@ function getEntryBurstLabel(entry) {
     return truncateText(key, 22);
 }
 
-function playSelectedEntriesBurst(entries) {
+function getMemoryBurstLabel(entry) {
+    const title = String(entry?.title || '').trim();
+    if (title) {
+        return truncateText(title, 22);
+    }
+    const content = String(entry?.content || '').trim();
+    if (content) {
+        return truncateText(content.split(/[。.!?\n]/u)[0], 22);
+    }
+    return truncateText(String(entry?.id || '记忆更新'), 22);
+}
+
+function playEntryBurst(entries, {
+    variant = 'router',
+    labelGetter = getEntryBurstLabel,
+} = {}) {
     const icon = getWorldInfoIcon();
     if (!icon.length || !entries.length) {
         return;
@@ -483,7 +507,9 @@ function playSelectedEntriesBurst(entries) {
     const burstEntries = entries.slice(0, MAX_BURST_ITEMS);
 
     burstEntries.forEach((entry, index) => {
-        const chip = $('<div class="ai-wbr-entry-burst"></div>').text(getEntryBurstLabel(entry));
+        const chip = $('<div class="ai-wbr-entry-burst"></div>')
+            .addClass(variant === 'memory' ? 'ai-wbr-entry-burst-memory' : '')
+            .text(labelGetter(entry));
         const direction = index % 2 === 0 ? -1 : 1;
         const spreadX = direction * (44 + (index * 18));
         const spreadY = 54 + (index * 12);
@@ -502,6 +528,13 @@ function playSelectedEntriesBurst(entries) {
     burstCleanupTimer = setTimeout(() => {
         clearEntryBurst();
     }, 1900);
+}
+
+function playSelectedEntriesBurst(entries) {
+    playEntryBurst(entries, {
+        variant: 'router',
+        labelGetter: getEntryBurstLabel,
+    });
 }
 
 function normalizeText(value) {
@@ -1657,6 +1690,7 @@ function applyMemoryGraphUpdate(update) {
     const graph = getMemoryGraph();
     const now = new Date().toISOString();
     let addedOrUpdatedNodeCount = 0;
+    const touchedEntries = [];
 
     const state = update?.state && typeof update.state === 'object' ? update.state : {};
     if (typeof state.current_location === 'string') {
@@ -1696,10 +1730,12 @@ function applyMemoryGraphUpdate(update) {
             });
             byId.set(existing.id, existing);
             addedOrUpdatedNodeCount += 1;
+            touchedEntries.push(existing);
         } else {
             graph.nodes.push(node);
             byId.set(node.id, node);
             addedOrUpdatedNodeCount += 1;
+            touchedEntries.push(node);
         }
     }
 
@@ -1724,6 +1760,7 @@ function applyMemoryGraphUpdate(update) {
         }
         existing.updatedAt = now;
         addedOrUpdatedNodeCount += 1;
+        touchedEntries.push(existing);
     }
 
     if (!addedOrUpdatedNodeCount && typeof update?.summary === 'string' && update.summary.trim()) {
@@ -1739,6 +1776,7 @@ function applyMemoryGraphUpdate(update) {
         }, byId.size);
         graph.nodes.push(fallbackNode);
         byId.set(fallbackNode.id, fallbackNode);
+        touchedEntries.push(fallbackNode);
     }
 
     graph.nodes = graph.nodes
@@ -1782,35 +1820,25 @@ function applyMemoryGraphUpdate(update) {
     }
     graph.updatedAt = now;
     saveMemoryGraph(graph);
-    return graph;
-}
-
-function startMemoryAnimation() {
-    const icon = getWorldInfoIcon();
-    if (!icon.length) {
-        return;
-    }
-
-    const layer = ensureFxLayer();
-    const rect = icon[0].getBoundingClientRect();
-    let pulse = layer.children('.ai-wbr-memory-orbit');
-    if (!pulse.length) {
-        pulse = $('<div class="ai-wbr-memory-orbit"><span></span><span></span><span></span></div>');
-        layer.append(pulse);
-    }
-    pulse.css({
-        left: `${rect.left + (rect.width / 2)}px`,
-        top: `${rect.top + (rect.height / 2)}px`,
-    });
+    return {
+        graph,
+        touchedEntries: uniqueStrings(touchedEntries.map(entry => entry?.id))
+            .map(id => graph.nodes.find(node => node.id === id))
+            .filter(Boolean),
+    };
 }
 
 function stopMemoryAnimation(success = true) {
-    const pulse = $('#ai_wbr_fx_layer .ai-wbr-memory-orbit');
-    if (!pulse.length) {
+    const underline = $('#ai_wbr_fx_layer .ai-wbr-book-underline');
+    if (!underline.length) {
         return;
     }
-    pulse.toggleClass('ai-wbr-memory-orbit-done', !!success);
-    setTimeout(() => pulse.remove(), success ? 720 : 120);
+    if (success) {
+        setTimeout(() => underline.remove(), 120);
+    } else {
+        underline.addClass('ai-wbr-book-underline-error');
+        setTimeout(() => underline.remove(), 980);
+    }
 }
 
 async function runMemoryGraphUpdate(reason = 'auto') {
@@ -1886,12 +1914,19 @@ async function runMemoryGraphUpdate(reason = 'auto') {
         setCurrentMemoryLastRaw(summarizeRouterResponse(raw), context);
         setCurrentMemoryLastError('', context);
         const update = parseMemoryUpdate(raw, prompt);
-        applyMemoryGraphUpdate(update);
+        const memoryResult = applyMemoryGraphUpdate(update);
         setCurrentMemoryLastTurnSignature(signature, context);
-        const nodeCount = getMemoryGraph().nodes.length;
-        const linkCount = getMemoryGraph().links.length;
+        const nodeCount = memoryResult.graph.nodes.length;
+        const linkCount = memoryResult.graph.links.length;
         setMemoryStatus(`已更新：${nodeCount} 节点 / ${linkCount} 关系`);
-        playStatusBurst('✦', 'memory');
+        if (memoryResult.touchedEntries.length) {
+            playEntryBurst(memoryResult.touchedEntries, {
+                variant: 'memory',
+                labelGetter: getMemoryBurstLabel,
+            });
+        } else {
+            playStatusBurst('✦', 'memory');
+        }
         stopMemoryAnimation(true);
         return true;
     } catch (error) {
