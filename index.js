@@ -174,12 +174,27 @@ function getChatScopedUiSignature(context = getContext()) {
     const memoryStamp = typeof memoryRaw === 'string'
         ? memoryRaw.slice(0, 120)
         : JSON.stringify(memoryRaw || {}).slice(0, 120);
+    const charaFile = String(getCharaFilename?.() || '');
+    const character = context?.characters?.[context?.characterId] || context?.character;
     return [
+        charaFile,
+        String(context?.characterId ?? context?.character_id ?? ''),
+        String(context?.groupId ?? context?.group_id ?? ''),
+        String(character?.avatar ?? character?.name ?? ''),
         String(context?.chatId ?? context?.chat_id ?? context?.conversationId ?? context?.sessionId ?? ''),
         String(context?.chatMetadata?.file_name ?? context?.chatMetadata?.main_chat ?? context?.chatMetadata?.name ?? ''),
         String(chat.length),
         memoryStamp,
     ].join('|');
+}
+
+function clearMemoryUiForScopeSwitch() {
+    $('#ai_wbr_memory_node_popover').hide();
+    $('#ai_wbr_memory_graph').html('<div class="ai-wbr-token-empty">正在切换聊天记忆...</div>');
+    $('#ai_wbr_memory_node_editor').empty().append('<div class="ai-wbr-token-empty">点击上方图谱节点后，这里会显示该节点的可编辑信息。</div>');
+    $('#ai_wbr_memory_nodes').empty();
+    $('#ai_wbr_memory_links').empty();
+    $('#ai_wbr_memory_json').val('');
 }
 
 function safeRenderChatScopedPanels() {
@@ -216,6 +231,34 @@ function startChatScopedUiPolling() {
             safeRenderChatScopedPanels();
         }
     }, 500);
+}
+
+function handleChatScopedUiMaybeChanged() {
+    clearEntryBurst();
+    stopWorldInfoAnimation();
+    clearTimeout(memoryUpdateTimer);
+    clearChatUiRefreshTimers();
+    memoryGraphSelectedNodeId = '';
+    memoryGraphLinkSourceId = '';
+    clearMemoryUiForScopeSwitch();
+    lastObservedChatScopedUiSignature = '';
+    scheduleChatScopedUiRefresh();
+}
+
+function installChatScopedUiRefreshEventHooks() {
+    const hookedValues = new Set();
+    const pattern = /(CHAT|CHARACTER|CHARA|GROUP|OPEN|LOAD|SELECT|SWIPE)/i;
+    for (const [key, value] of Object.entries(event_types || {})) {
+        if (!value || hookedValues.has(value) || !pattern.test(String(key))) {
+            continue;
+        }
+        hookedValues.add(value);
+        try {
+            eventSource.on(value, handleChatScopedUiMaybeChanged);
+        } catch {
+            // no-op: some event names may not be hookable on older builds
+        }
+    }
 }
 
 async function waitForCompatIdle() {
@@ -4463,6 +4506,7 @@ jQuery(async () => {
         ensureTavernHelperCompatHook();
         startCompatGenerateHookPolling();
         startChatScopedUiPolling();
+        installChatScopedUiRefreshEventHooks();
 
         eventSource.on(event_types.GENERATION_STARTED, () => {
             isGenerationActive = true;
@@ -4478,13 +4522,7 @@ jQuery(async () => {
         });
 
         eventSource.on(event_types.CHAT_CHANGED, () => {
-            clearEntryBurst();
-            stopWorldInfoAnimation();
-            $('#ai_wbr_memory_node_popover').hide();
-            clearTimeout(memoryUpdateTimer);
-            clearChatUiRefreshTimers();
-            memoryGraphSelectedNodeId = '';
-            memoryGraphLinkSourceId = '';
+            handleChatScopedUiMaybeChanged();
             pendingCompatSend = false;
             suppressCompatReplay = false;
             lastRun = {
@@ -4498,7 +4536,6 @@ jQuery(async () => {
                 routerRaw: '',
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
-            scheduleChatScopedUiRefresh();
         });
 
         debugLog('Loaded');
