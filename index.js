@@ -3569,8 +3569,9 @@ function renderMemoryGraphSvg(graph) {
         return;
     }
 
+    const viewport = getMemoryGraphViewportMetrics(container[0]);
     const width = MEMORY_GRAPH_CANVAS_WIDTH;
-    const height = MEMORY_GRAPH_CANVAS_HEIGHT;
+    const height = viewport.baseHeight;
     const centerX = width / 2;
     const centerY = height / 2;
     const radius = Math.min(134, 50 + nodes.length * 9);
@@ -3654,6 +3655,7 @@ function renderMemoryGraphSvg(graph) {
     if (!memoryGraphView || !Number.isFinite(memoryGraphView.width)) {
         memoryGraphView = { x: 0, y: 0, width, height };
     }
+    syncMemoryGraphViewToContainerAspect(container[0]);
 
     container.html(`
         <div class="ai-wbr-memory-graph-toolbar">
@@ -3676,6 +3678,32 @@ function getMemoryGraphSvgPoint(svg, clientX, clientY) {
 
 function updateMemoryGraphViewBox(svg) {
     svg.setAttribute('viewBox', `${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}`);
+}
+
+function getMemoryGraphViewportMetrics(containerEl) {
+    const rect = containerEl?.getBoundingClientRect?.();
+    const pixelWidth = Math.max(1, Number(rect?.width || 1));
+    const pixelHeight = Math.max(1, Number(rect?.height || 1));
+    const aspect = pixelWidth / pixelHeight;
+    return {
+        aspect,
+        baseWidth: MEMORY_GRAPH_CANVAS_WIDTH,
+        baseHeight: Math.max(220, MEMORY_GRAPH_CANVAS_WIDTH / aspect),
+    };
+}
+
+function syncMemoryGraphViewToContainerAspect(containerEl) {
+    if (!memoryGraphView || !Number.isFinite(memoryGraphView.width)) {
+        return;
+    }
+    const { aspect } = getMemoryGraphViewportMetrics(containerEl);
+    const nextHeight = Math.max(120, memoryGraphView.width / Math.max(0.2, aspect));
+    if (!Number.isFinite(nextHeight) || Math.abs(nextHeight - memoryGraphView.height) < 0.5) {
+        return;
+    }
+    const centerY = memoryGraphView.y + (memoryGraphView.height / 2);
+    memoryGraphView.height = nextHeight;
+    memoryGraphView.y = centerY - (nextHeight / 2);
 }
 
 function parseMemoryNodeTransform(transform) {
@@ -3917,7 +3945,8 @@ function bindMemoryGraphSvgInteractions() {
     });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-reset', () => {
-        memoryGraphView = { x: 0, y: 0, width: MEMORY_GRAPH_CANVAS_WIDTH, height: MEMORY_GRAPH_CANVAS_HEIGHT };
+        const viewport = getMemoryGraphViewportMetrics(container[0]);
+        memoryGraphView = { x: 0, y: 0, width: viewport.baseWidth, height: viewport.baseHeight };
         updateMemoryGraphViewBox(svg);
     });
 
