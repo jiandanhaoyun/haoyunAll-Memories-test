@@ -304,6 +304,14 @@
 .ai-wbr-memory-edge {
     stroke: rgba(196, 180, 255, 0.62);
     stroke-width: 1.6;
+    cursor: pointer;
+    pointer-events: stroke;
+}
+
+.ai-wbr-memory-edge:hover,
+.ai-wbr-memory-edge-selected {
+    stroke: rgba(255, 214, 132, 0.95);
+    stroke-width: 2.6;
 }
 
 .ai-wbr-memory-node circle {
@@ -533,6 +541,11 @@
     border-radius: 8px;
     padding: 0.55rem;
     background: var(--SmartThemeBlurTintColor);
+}
+
+.ai-wbr-memory-link-card-selected {
+    border-color: rgba(255, 214, 132, 0.8);
+    box-shadow: 0 0 0 1px rgba(255, 214, 132, 0.35) inset;
 }
 
 .ai-wbr-memory-card-head,
