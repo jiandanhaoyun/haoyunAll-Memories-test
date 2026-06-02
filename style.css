@@ -256,10 +256,14 @@
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
     background:
-        radial-gradient(circle at 50% 35%, rgba(156, 123, 255, 0.13), transparent 56%),
-        var(--SmartThemeBlurTintColor);
+        radial-gradient(circle at 50% 35%, rgba(92, 130, 255, 0.12), transparent 48%),
+        radial-gradient(circle at 32% 24%, rgba(58, 228, 193, 0.08), transparent 34%),
+        linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+        color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(10, 12, 20, 0.96)) 92%, #07101f 8%);
+    background-size: auto, auto, 22px 22px, 22px 22px, auto;
     overflow: hidden;
-    min-height: 14rem;
+    min-height: 16rem;
 }
 
 .ai-wbr-memory-graph-toolbar {
@@ -302,57 +306,110 @@
 }
 
 .ai-wbr-memory-edge {
-    stroke: rgba(196, 180, 255, 0.62);
-    stroke-width: 1.6;
+    fill: none;
+    stroke: rgba(110, 208, 255, 0.92);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 7px rgba(80, 180, 255, 0.22));
+    cursor: pointer;
+    pointer-events: stroke;
+}
+
+.ai-wbr-memory-edge-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 18;
     cursor: pointer;
     pointer-events: stroke;
 }
 
 .ai-wbr-memory-edge:hover,
 .ai-wbr-memory-edge-selected {
-    stroke: rgba(255, 214, 132, 0.95);
-    stroke-width: 2.6;
-}
-
-.ai-wbr-memory-node circle {
-    fill: rgba(188, 169, 255, 0.36);
-    stroke: rgba(236, 230, 255, 0.72);
-    stroke-width: 1.2;
-    filter: drop-shadow(0 0 7px rgba(194, 156, 255, 0.25));
+    stroke: rgba(183, 131, 255, 0.98);
+    stroke-width: 4.8;
+    filter: drop-shadow(0 0 12px rgba(183, 131, 255, 0.3));
 }
 
 .ai-wbr-memory-node {
     cursor: pointer;
+    --memory-node-accent: #66e0ff;
+    --memory-node-accent-soft: rgba(102, 224, 255, 0.18);
 }
 
-.ai-wbr-memory-node:hover circle {
-    stroke: rgba(255, 255, 255, 0.96);
-    filter: drop-shadow(0 0 12px rgba(224, 202, 255, 0.52));
+.ai-wbr-memory-node-card {
+    fill: rgba(15, 22, 38, 0.92);
+    stroke: rgba(104, 207, 255, 0.62);
+    stroke-width: 1.5;
+    filter:
+        drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28))
+        drop-shadow(0 0 10px rgba(92, 182, 255, 0.15));
 }
 
-.ai-wbr-memory-node-location circle {
-    fill: rgba(103, 198, 255, 0.34);
+.ai-wbr-memory-node:hover .ai-wbr-memory-node-card {
+    stroke: rgba(255, 255, 255, 0.95);
+    filter:
+        drop-shadow(0 14px 24px rgba(0, 0, 0, 0.34))
+        drop-shadow(0 0 16px rgba(119, 224, 255, 0.22));
 }
 
-.ai-wbr-memory-node-character circle {
-    fill: rgba(127, 217, 165, 0.34);
+.ai-wbr-memory-node .ai-wbr-memory-node-accent {
+    fill: var(--memory-node-accent);
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--memory-node-accent) 55%, transparent 45%));
 }
 
-.ai-wbr-memory-node-quest circle,
-.ai-wbr-memory-node-event circle {
-    fill: rgba(255, 198, 118, 0.32);
+.ai-wbr-memory-node-location {
+    --memory-node-accent: #4ec9ff;
 }
 
-.ai-wbr-memory-node text {
+.ai-wbr-memory-node-character {
+    --memory-node-accent: #45e2a6;
+}
+
+.ai-wbr-memory-node-event,
+.ai-wbr-memory-node-quest {
+    --memory-node-accent: #ffbf69;
+}
+
+.ai-wbr-memory-node-faction,
+.ai-wbr-memory-node-concept {
+    --memory-node-accent: #b78cff;
+}
+
+.ai-wbr-memory-node-item {
+    --memory-node-accent: #ffd86b;
+}
+
+.ai-wbr-memory-node-rule {
+    --memory-node-accent: #ff8fb1;
+}
+
+.ai-wbr-memory-node-title {
     fill: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 92%, #ece7ff 8%);
-    font-size: 0.88rem;
-    font-weight: 600;
-    text-anchor: middle;
-    dominant-baseline: hanging;
+    font-size: 0.92rem;
+    font-weight: 700;
     pointer-events: none;
-    paint-order: stroke;
-    stroke: rgba(0, 0, 0, 0.48);
-    stroke-width: 2px;
+}
+
+.ai-wbr-memory-node-subtitle {
+    fill: color-mix(in srgb, var(--SmartThemeBodyColor, #f4f6ff) 74%, rgba(206, 220, 255, 0.9) 26%);
+    font-size: 0.74rem;
+    opacity: 0.92;
+    pointer-events: none;
+}
+
+.ai-wbr-memory-node-badge rect {
+    fill: color-mix(in srgb, var(--memory-node-accent) 22%, rgba(12, 18, 30, 0.88) 78%);
+    stroke: color-mix(in srgb, var(--memory-node-accent) 60%, rgba(255, 255, 255, 0.2) 40%);
+    stroke-width: 1;
+}
+
+.ai-wbr-memory-node-badge text {
+    fill: color-mix(in srgb, var(--memory-node-accent) 88%, white 12%);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-anchor: middle;
+    pointer-events: none;
 }
 
 .ai-wbr-memory-node-popover {

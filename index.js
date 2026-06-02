@@ -26,6 +26,10 @@ const MAX_BURST_ITEMS = 5;
 const MAX_MEMORY_CONTEXT_PREVIEW = 260;
 const MAX_MEMORY_SELECTED = 4;
 const CHAT_MEMORY_FIELD = 'AIWBR_ChatMemory';
+const MEMORY_GRAPH_CANVAS_WIDTH = 760;
+const MEMORY_GRAPH_CANVAS_HEIGHT = 340;
+const MEMORY_GRAPH_NODE_WIDTH = 172;
+const MEMORY_GRAPH_NODE_HEIGHT = 82;
 const MEMORY_NODE_TYPE_OPTIONS = [
     { value: 'event', label: '事件' },
     { value: 'character', label: '角色' },
@@ -155,7 +159,7 @@ let memoryUpdateTimer = null;
 let chatUiRefreshTimers = [];
 let chatScopedUiPollTimer = null;
 let lastObservedChatScopedUiSignature = '';
-let memoryGraphView = { x: 0, y: 0, width: 620, height: 300 };
+let memoryGraphView = { x: 0, y: 0, width: MEMORY_GRAPH_CANVAS_WIDTH, height: MEMORY_GRAPH_CANVAS_HEIGHT };
 let memoryGraphDrag = null;
 let memoryGraphPan = null;
 let memoryGraphLinkSourceId = '';
@@ -3563,11 +3567,11 @@ function renderMemoryGraphSvg(graph) {
         return;
     }
 
-    const width = 620;
-    const height = 300;
+    const width = MEMORY_GRAPH_CANVAS_WIDTH;
+    const height = MEMORY_GRAPH_CANVAS_HEIGHT;
     const centerX = width / 2;
     const centerY = height / 2;
-    const radius = Math.min(120, 42 + nodes.length * 7);
+    const radius = Math.min(134, 50 + nodes.length * 9);
     const positions = new Map();
     nodes.forEach((node, index) => {
         if (Number.isFinite(Number(node.x)) && Number.isFinite(Number(node.y))) {
@@ -3579,8 +3583,8 @@ function renderMemoryGraphSvg(graph) {
         }
 
         const angle = (Math.PI * 2 * index / nodes.length) - Math.PI / 2;
-        node.x = centerX + Math.cos(angle) * radius;
-        node.y = centerY + Math.sin(angle) * radius;
+        node.x = centerX + Math.cos(angle) * radius - (MEMORY_GRAPH_NODE_WIDTH / 2);
+        node.y = centerY + Math.sin(angle) * radius - (MEMORY_GRAPH_NODE_HEIGHT / 2);
         positions.set(node.id, {
             x: node.x,
             y: node.y,
@@ -3597,15 +3601,29 @@ function renderMemoryGraphSvg(graph) {
         }
         const opacity = Math.max(0.22, Math.min(0.85, Number(link.weight || 0.5)));
         const selectedClass = String(link.id) === String(memoryGraphSelectedLinkId) ? ' ai-wbr-memory-edge-selected' : '';
-        return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" class="ai-wbr-memory-edge${selectedClass}" data-memory-link-id="${escapeHtml(String(link.id || ''))}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}"><title>${escapeHtml(link.type || 'RELATED')}</title></line>`;
+        const path = buildMemoryEdgePath(source, target);
+        const linkId = escapeHtml(String(link.id || ''));
+        return `
+            <path d="${path}" class="ai-wbr-memory-edge-hit" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}"></path>
+            <path d="${path}" class="ai-wbr-memory-edge${selectedClass}" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}"><title>${escapeHtml(link.type || 'RELATED')}</title></path>
+        `;
     }).join('');
 
-    const circles = nodes.map(node => {
+    const cards = nodes.map(node => {
         const position = positions.get(node.id);
-        const colorClass = `ai-wbr-memory-node-${escapeHtml(String(node.type || 'event').toLowerCase())}`;
+        const rawType = String(node.type || 'event');
+        const colorClass = `ai-wbr-memory-node-${escapeHtml(rawType.toLowerCase())}`;
+        const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rawType, rawType);
+        const subtitle = node.summary || node.content || '';
         return `<g class="ai-wbr-memory-node ${colorClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
-            <circle r="${24 + (Number(node.importance || 0.5) * 10)}"></circle>
-            <text y="${40 + (Number(node.importance || 0.5) * 5)}">${escapeHtml(truncateText(node.title, 16))}</text>
+            <rect class="ai-wbr-memory-node-card" x="0" y="0" width="${MEMORY_GRAPH_NODE_WIDTH}" height="${MEMORY_GRAPH_NODE_HEIGHT}" rx="14" ry="14"></rect>
+            <circle class="ai-wbr-memory-node-accent" cx="16" cy="16" r="4"></circle>
+            <text class="ai-wbr-memory-node-title" x="28" y="21">${escapeHtml(truncateText(node.title || node.id, 20))}</text>
+            <text class="ai-wbr-memory-node-subtitle" x="14" y="42">${escapeHtml(truncateText(subtitle, 32) || '暂无摘要')}</text>
+            <g class="ai-wbr-memory-node-badge" transform="translate(12,56)">
+                <rect width="${Math.max(34, typeLabel.length * 12)}" height="18" rx="9" ry="9"></rect>
+                <text x="${Math.max(34, typeLabel.length * 12) / 2}" y="12">${escapeHtml(typeLabel)}</text>
+            </g>
             <title>${escapeHtml(`${node.title}\n${node.content || ''}`)}</title>
         </g>`;
     }).join('');
@@ -3621,7 +3639,7 @@ function renderMemoryGraphSvg(graph) {
             <button class="menu_button ai-wbr-memory-zoom-reset" type="button">重置视图</button>
             <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
         </div>
-        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" role="img" aria-label="记忆图谱">${lines}${circles}</svg>
+        <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" role="img" aria-label="记忆图谱">${lines}${cards}</svg>
     `);
     bindMemoryGraphSvgInteractions();
 }
@@ -3647,6 +3665,71 @@ function parseMemoryNodeTransform(transform) {
         x: Number(match[1]),
         y: Number(match[2]),
     };
+}
+
+function getOptionLabel(options, value, fallback = '') {
+    const normalizedValue = String(value || '');
+    return options.find(option => option.value === normalizedValue)?.label || fallback || normalizedValue;
+}
+
+function getMemoryNodeRect(position) {
+    return {
+        x: Number(position?.x || 0),
+        y: Number(position?.y || 0),
+        width: MEMORY_GRAPH_NODE_WIDTH,
+        height: MEMORY_GRAPH_NODE_HEIGHT,
+    };
+}
+
+function buildMemoryEdgePath(sourcePosition, targetPosition) {
+    const sourceRect = getMemoryNodeRect(sourcePosition);
+    const targetRect = getMemoryNodeRect(targetPosition);
+    const sourceCenter = {
+        x: sourceRect.x + (sourceRect.width / 2),
+        y: sourceRect.y + (sourceRect.height / 2),
+    };
+    const targetCenter = {
+        x: targetRect.x + (targetRect.width / 2),
+        y: targetRect.y + (targetRect.height / 2),
+    };
+    const dx = targetCenter.x - sourceCenter.x;
+    const dy = targetCenter.y - sourceCenter.y;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+
+    let startX;
+    let startY;
+    let endX;
+    let endY;
+    let control1X;
+    let control1Y;
+    let control2X;
+    let control2Y;
+
+    if (horizontal) {
+        const sourceToRight = dx >= 0;
+        startX = sourceToRight ? sourceRect.x + sourceRect.width : sourceRect.x;
+        startY = sourceRect.y + (sourceRect.height / 2);
+        endX = sourceToRight ? targetRect.x : targetRect.x + targetRect.width;
+        endY = targetRect.y + (targetRect.height / 2);
+        const curve = Math.max(42, Math.abs(endX - startX) * 0.35);
+        control1X = startX + (sourceToRight ? curve : -curve);
+        control1Y = startY;
+        control2X = endX + (sourceToRight ? -curve : curve);
+        control2Y = endY;
+    } else {
+        const sourceToBottom = dy >= 0;
+        startX = sourceRect.x + (sourceRect.width / 2);
+        startY = sourceToBottom ? sourceRect.y + sourceRect.height : sourceRect.y;
+        endX = targetRect.x + (targetRect.width / 2);
+        endY = sourceToBottom ? targetRect.y : targetRect.y + targetRect.height;
+        const curve = Math.max(34, Math.abs(endY - startY) * 0.35);
+        control1X = startX;
+        control1Y = startY + (sourceToBottom ? curve : -curve);
+        control2X = endX;
+        control2Y = endY + (sourceToBottom ? -curve : curve);
+    }
+
+    return `M ${startX} ${startY} C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endX} ${endY}`;
 }
 
 function buildSelectOptionsHtml(options, currentValue) {
@@ -3780,7 +3863,7 @@ function bindMemoryGraphSvgInteractions() {
     });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-reset', () => {
-        memoryGraphView = { x: 0, y: 0, width: 620, height: 300 };
+        memoryGraphView = { x: 0, y: 0, width: MEMORY_GRAPH_CANVAS_WIDTH, height: MEMORY_GRAPH_CANVAS_HEIGHT };
         updateMemoryGraphViewBox(svg);
     });
 
@@ -3805,14 +3888,14 @@ function bindMemoryGraphSvgInteractions() {
         event.stopPropagation();
     });
 
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-edge', function (event) {
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
         event.preventDefault();
         event.stopPropagation();
         memoryGraphSelectedLinkId = String($(this).data('memoryLinkId') || '');
         renderMemoryPanel();
     });
 
-    container.on('mousedown.memoryGraphSvg', '.ai-wbr-memory-edge', function (event) {
+    container.on('mousedown.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
         event.preventDefault();
         event.stopPropagation();
     });
@@ -3868,16 +3951,11 @@ function bindMemoryGraphSvgInteractions() {
             if (link.source !== node.id && link.target !== node.id) {
                 return;
             }
-            const line = container.find(`.ai-wbr-memory-edge[data-source-id="${escapeCssSelector(link.source)}"][data-target-id="${escapeCssSelector(link.target)}"]`);
+            const line = container.find(`[data-memory-link-id="${escapeCssSelector(String(link.id || ''))}"]`);
             const source = graph.nodes.find(item => item.id === link.source);
             const target = graph.nodes.find(item => item.id === link.target);
             if (source && target) {
-                line.attr({
-                    x1: source.x,
-                    y1: source.y,
-                    x2: target.x,
-                    y2: target.y,
-                });
+                line.attr('d', buildMemoryEdgePath(source, target));
             }
         });
     });
