@@ -72,6 +72,7 @@ const defaultSettings = {
     memoryDebug: false,
     memoryScanMessages: 6,
     memoryRequestMaxTokens: 10000,
+    memoryRetries: 3,
     memoryMaxNodes: 60,
     memoryMaxLinks: 120,
     memoryGraphsByChat: {},
@@ -446,6 +447,22 @@ function flashWorldInfoError() {
     setTimeout(() => {
         underline.removeClass('ai-wbr-book-underline-error');
     }, 980);
+}
+
+async function requestMemoryExtraction(context, prompt, systemPrompt) {
+    if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
+        return sendSeparateMemoryRequest(context, prompt, {
+            systemPrompt,
+            maxTokens: getMemoryRequestMaxTokens(),
+        });
+    }
+
+    return context.generateRaw({
+        prompt,
+        systemPrompt,
+        responseLength: getMemoryRequestMaxTokens(),
+        trimNames: false,
+    });
 }
 
 function playStatusBurst(symbol, variant = 'retry') {
@@ -1916,70 +1933,77 @@ async function runMemoryGraphUpdate(reason = 'auto') {
     try {
         const graph = getMemoryGraph();
         const prompt = buildMemoryExtractionPrompt(recentMessages, graph);
-        setCurrentMemoryLastPrompt(prompt, context);
         setCurrentMemoryLastRaw('', context);
         setCurrentMemoryLastError('', context);
-        const memorySystemPrompt = '你是后置轻量记忆变量块输出器。禁止解释，禁止 reasoning，禁止 Markdown，禁止 JSON 对象；只输出指定变量块。';
-        let raw;
-        try {
-            isRouterSelectionRequest = true;
-            if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
-                raw = await sendSeparateMemoryRequest(context, prompt, {
-                    systemPrompt: memorySystemPrompt,
-                    maxTokens: getMemoryRequestMaxTokens(),
-                });
-            } else {
-                raw = await context.generateRaw({
-                    prompt,
-                    systemPrompt: memorySystemPrompt,
-                    responseLength: getMemoryRequestMaxTokens(),
-                    trimNames: false,
-                });
-            }
-        } finally {
-            isRouterSelectionRequest = false;
-        }
+        const maxAttempts = Math.max(1, Number(settings.memoryRetries || 0) + 1);
+        const baseSystemPrompt = '你是后置轻量记忆变量块输出器。禁止解释，禁止 reasoning，禁止 Markdown，禁止 JSON 对象；只输出指定变量块。';
+        const retrySystemPrompt = '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。';
+        let raw = '';
+        let lastError = null;
 
-        if (hasEmptyVisibleContentDueToLength(raw)) {
-            const retryPrompt = buildMemoryExtractionRetryPrompt(recentMessages, graph);
-            setCurrentMemoryLastPrompt(`${prompt}\n\n----- RETRY PROMPT -----\n\n${retryPrompt}`, context);
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            const useRetryPrompt = attempt > 1;
+            const activePrompt = useRetryPrompt ? buildMemoryExtractionRetryPrompt(recentMessages, graph) : prompt;
+            const activeSystemPrompt = useRetryPrompt ? retrySystemPrompt : baseSystemPrompt;
+            const promptLog = useRetryPrompt
+                ? `${prompt}\n\n----- RETRY #${attempt - 1} PROMPT -----\n\n${activePrompt}`
+                : prompt;
+            setCurrentMemoryLastPrompt(promptLog, context);
+
             try {
                 isRouterSelectionRequest = true;
-                if (settings.routerUseSeparateModel && settings.routerApiUrl && settings.routerApiKey && settings.routerModel) {
-                    raw = await sendSeparateMemoryRequest(context, retryPrompt, {
-                        systemPrompt: '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。',
-                        maxTokens: getMemoryRequestMaxTokens(),
-                    });
-                } else {
-                    raw = await context.generateRaw({
-                        prompt: retryPrompt,
-                        systemPrompt: '你是变量块输出器。禁止空回复，禁止解释，禁止思考过程，直接输出变量块。',
-                        responseLength: getMemoryRequestMaxTokens(),
-                        trimNames: false,
-                    });
+                raw = await requestMemoryExtraction(context, activePrompt, activeSystemPrompt);
+            } catch (error) {
+                lastError = error;
+                if (attempt >= maxAttempts) {
+                    throw error;
                 }
+                playStatusBurst('🔄', 'retry');
+                continue;
             } finally {
                 isRouterSelectionRequest = false;
             }
+
+            setCurrentMemoryLastRaw(summarizeRouterResponse(raw), context);
+
+            if (hasEmptyVisibleContentDueToLength(raw)) {
+                lastError = new Error('Memory extraction returned empty visible content due to length.');
+                if (attempt >= maxAttempts) {
+                    throw lastError;
+                }
+                playStatusBurst('🔄', 'retry');
+                continue;
+            }
+
+            try {
+                const update = parseMemoryUpdate(raw, promptLog);
+                setCurrentMemoryLastError('', context);
+                const memoryResult = applyMemoryGraphUpdate(update);
+                setCurrentMemoryLastTurnSignature(signature, context);
+                const nodeCount = memoryResult.graph.nodes.length;
+                const linkCount = memoryResult.graph.links.length;
+                setMemoryStatus(`已更新：${nodeCount} 节点 / ${linkCount} 关系`);
+                if (memoryResult.touchedEntries.length) {
+                    playEntryBurst(memoryResult.touchedEntries, {
+                        variant: 'memory',
+                        labelGetter: getMemoryBurstLabel,
+                    });
+                } else {
+                    playStatusBurst('✦', 'memory');
+                }
+                stopMemoryAnimation(true);
+                return true;
+            } catch (error) {
+                lastError = error;
+                setCurrentMemoryLastError(error?.message || String(error), context);
+                if (attempt >= maxAttempts) {
+                    throw error;
+                }
+                playStatusBurst('🔄', 'retry');
+            }
         }
-        setCurrentMemoryLastRaw(summarizeRouterResponse(raw), context);
-        setCurrentMemoryLastError('', context);
-        const update = parseMemoryUpdate(raw, prompt);
-        const memoryResult = applyMemoryGraphUpdate(update);
-        setCurrentMemoryLastTurnSignature(signature, context);
-        const nodeCount = memoryResult.graph.nodes.length;
-        const linkCount = memoryResult.graph.links.length;
-        setMemoryStatus(`已更新：${nodeCount} 节点 / ${linkCount} 关系`);
-        if (memoryResult.touchedEntries.length) {
-            playEntryBurst(memoryResult.touchedEntries, {
-                variant: 'memory',
-                labelGetter: getMemoryBurstLabel,
-            });
-        } else {
-            playStatusBurst('✦', 'memory');
-        }
-        stopMemoryAnimation(true);
-        return true;
+
+        throw lastError || new Error('Memory extraction failed.');
     } catch (error) {
         console.warn(`${LOG_PREFIX} Memory graph update failed`, error);
         setCurrentMemoryLastError(error?.message || String(error), context);
@@ -3617,6 +3641,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_inject_to_router', 'memoryInjectToRouter');
     bindCheckbox('#ai_wbr_memory_debug', 'memoryDebug');
     bindNumber('#ai_wbr_memory_scan_messages', 'memoryScanMessages', 2, 40);
+    bindNumber('#ai_wbr_memory_retries', 'memoryRetries', 0, 10);
     bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
     bindNumber('#ai_wbr_memory_max_links', 'memoryMaxLinks', 0, 400);
 

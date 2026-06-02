@@ -154,6 +154,9 @@
 
                     <label for="ai_wbr_memory_request_max_tokens"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理请求实际发送给模型的 max_tokens 上限。普通整理和重试都使用这个值。"></span>后置请求 tokens 上限</label>
                     <input id="ai_wbr_memory_request_max_tokens" class="text_pole" type="number" min="32" max="100000" step="16" />
+
+                    <label for="ai_wbr_memory_retries"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理失败、空回或解析失败时，额外自动重试几次。"></span>后置记忆重试次数</label>
+                    <input id="ai_wbr_memory_retries" class="text_pole" type="number" min="0" max="10" step="1" />
                 </div>
 
                 <div class="ai-wbr-actions">
