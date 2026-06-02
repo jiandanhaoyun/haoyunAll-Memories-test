@@ -3859,6 +3859,15 @@ function bindMemoryGraphSvgInteractions() {
         if (!memoryGraphLinkSourceId || memoryGraphLinkSourceId === targetId) {
             return;
         }
+        const existingIndex = graph.links.findIndex(item => item.source === memoryGraphLinkSourceId && item.target === targetId && item.type === 'RELATED');
+        if (existingIndex >= 0) {
+            graph.links.splice(existingIndex, 1);
+            graph.updatedAt = new Date().toISOString();
+            saveMemoryGraph(graph);
+            memoryGraphLinkSourceId = '';
+            $('#ai_wbr_memory_node_popover').hide();
+            return;
+        }
         const link = normalizeMemoryLink({
             source: memoryGraphLinkSourceId,
             target: targetId,
@@ -4050,6 +4059,8 @@ function renderMemoryNodeEditor(graph) {
     const sourceTitle = memoryGraphLinkSourceId
         ? nodes.find(item => item.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId
         : '';
+    const hasRelatedLink = !!(memoryGraphLinkSourceId && selectedNode && memoryGraphLinkSourceId !== selectedNode.id
+        && graph.links.some(item => item.source === memoryGraphLinkSourceId && item.target === selectedNode.id && item.type === 'RELATED'));
 
     editor.append('<div class="ai-wbr-memory-subtitle"><b>节点编辑器</b></div>');
 
@@ -4094,7 +4105,7 @@ function renderMemoryNodeEditor(graph) {
                     $('<div class="ai-wbr-memory-popover-actions"></div>')
                         .append('<button class="menu_button ai-wbr-memory-editor-save" type="button">保存</button>')
                         .append('<button class="menu_button ai-wbr-memory-editor-set-link-source" type="button">设为起点</button>')
-                        .append($(`<button class="menu_button ai-wbr-memory-editor-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== selectedNode.id ? '' : 'disabled'}>连接到起点${sourceTitle ? `：${escapeHtml(truncateText(sourceTitle, 10))}` : ''}</button>`))
+                        .append($(`<button class="menu_button ai-wbr-memory-editor-link-to-source" type="button" ${memoryGraphLinkSourceId && memoryGraphLinkSourceId !== selectedNode.id ? '' : 'disabled'}>${hasRelatedLink ? '取消连线' : '连接到起点'}${sourceTitle ? `：${escapeHtml(truncateText(sourceTitle, 10))}` : ''}</button>`))
                         .append('<button class="menu_button ai-wbr-memory-editor-delete" type="button">删除</button>'),
                 ),
         );
@@ -4285,6 +4296,15 @@ function bindMemoryPanelActions() {
             const graph = getMemoryGraph();
             const targetId = memoryGraphSelectedNodeId;
             if (!memoryGraphLinkSourceId || !targetId || memoryGraphLinkSourceId === targetId) {
+                return;
+            }
+            const existingIndex = graph.links.findIndex(item => item.source === memoryGraphLinkSourceId && item.target === targetId && item.type === 'RELATED');
+            if (existingIndex >= 0) {
+                graph.links.splice(existingIndex, 1);
+                graph.updatedAt = new Date().toISOString();
+                saveMemoryGraph(graph);
+                memoryGraphLinkSourceId = '';
+                renderMemoryPanel();
                 return;
             }
             const link = normalizeMemoryLink({
