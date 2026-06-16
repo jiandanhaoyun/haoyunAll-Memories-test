@@ -718,6 +718,28 @@
     font-size: 0.92em;
 }
 
+.ai-wbr-world-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.55rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(20,20,24,0.88)) 94%, transparent 6%);
+}
+
+.ai-wbr-world-option {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.ai-wbr-world-option small {
+    opacity: 0.72;
+}
+
 .ai-wbr-debug {
     margin-top: 0.75rem;
 }

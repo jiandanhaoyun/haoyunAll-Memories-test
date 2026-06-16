@@ -125,6 +125,7 @@ const defaultSettings = {
     allowConstant: false,
     titleBlocklist: '',
     worldBlocklist: '',
+    worldSelectionStates: {},
     position: extension_prompt_types.IN_CHAT,
     depth: 4,
     role: extension_prompt_roles.SYSTEM,
@@ -327,6 +328,7 @@ function safeRenderChatScopedPanels() {
     memoryScopeDebugLog('safeRenderChatScopedPanels before render');
     renderDebugPanel();
     renderMemoryPanel();
+    renderActiveWorldbookSelector();
 }
 
 function scheduleChatScopedUiRefresh() {
@@ -638,6 +640,7 @@ function ensureSettings() {
     Object.assign(settings, defaultSettings, extension_settings[MODULE_NAME]);
     settings.memoryContainersByChat = settings.memoryContainersByChat && typeof settings.memoryContainersByChat === 'object' ? settings.memoryContainersByChat : {};
     settings.memoryLegacyGraphChatKeys = settings.memoryLegacyGraphChatKeys && typeof settings.memoryLegacyGraphChatKeys === 'object' ? settings.memoryLegacyGraphChatKeys : {};
+    settings.worldSelectionStates = settings.worldSelectionStates && typeof settings.worldSelectionStates === 'object' ? settings.worldSelectionStates : {};
     settings.memoryGraphsByChat = settings.memoryGraphsByChat && typeof settings.memoryGraphsByChat === 'object' ? settings.memoryGraphsByChat : {};
     settings.memoryStatusesByChat = settings.memoryStatusesByChat && typeof settings.memoryStatusesByChat === 'object' ? settings.memoryStatusesByChat : {};
     settings.memoryLastTurnSignaturesByChat = settings.memoryLastTurnSignaturesByChat && typeof settings.memoryLastTurnSignaturesByChat === 'object' ? settings.memoryLastTurnSignaturesByChat : {};
@@ -988,6 +991,70 @@ function getBlockedWorldRule(worldName) {
     }
 
     return parseBlockRules(settings.worldBlocklist).find(rule => matchesBlockRule(name, rule)) || '';
+}
+
+function getWorldSelectionState(worldName) {
+    const name = String(worldName || '').trim();
+    if (!name) {
+        return true;
+    }
+    const state = settings.worldSelectionStates?.[name];
+    return state !== false;
+}
+
+function setWorldSelectionState(worldName, enabled) {
+    const name = String(worldName || '').trim();
+    if (!name) {
+        return;
+    }
+    const nextStates = {
+        ...(settings.worldSelectionStates || {}),
+        [name]: !!enabled,
+    };
+    saveSetting('worldSelectionStates', nextStates);
+}
+
+function getActiveWorldbookBindings(context = getContext()) {
+    const character = context.characters?.[context.characterId];
+    const worldBindings = [];
+    const seen = new Set();
+
+    const addWorld = (worldName, source) => {
+        const name = String(worldName || '').trim();
+        if (!name || seen.has(name)) {
+            return;
+        }
+        seen.add(name);
+        worldBindings.push({
+            worldName: name,
+            source,
+        });
+    };
+
+    for (const worldName of selected_world_info || []) {
+        addWorld(worldName, '全局');
+    }
+
+    addWorld(context.chatMetadata?.[METADATA_KEY], '聊天绑定');
+    addWorld(character?.data?.extensions?.world, '角色绑定');
+    addWorld(context.powerUserSettings?.persona_description_lorebook, '人格绑定');
+
+    try {
+        const fileName = context.characterId !== undefined ? getCharaFilename(context.characterId) : '';
+        const extraCharLore = world_info.charLore?.find(entry => entry.name === fileName);
+        for (const worldName of extraCharLore?.extraBooks || []) {
+            addWorld(worldName, '角色额外');
+        }
+    } catch (error) {
+        debugLog('Could not read active worldbook bindings', error);
+    }
+
+    const embeddedBook = character?.data?.character_book;
+    if (embeddedBook?.entries?.length) {
+        addWorld(embeddedBook.name || character?.name || 'embedded', '角色内嵌');
+    }
+
+    return worldBindings;
 }
 
 function getEntryId(entry, fallback) {
@@ -2662,8 +2729,13 @@ async function getEmbeddedCharacterEntries(context) {
         return [];
     }
 
+    const worldName = book.name || character?.name || 'embedded';
+    if (!getWorldSelectionState(worldName) || getBlockedWorldRule(worldName)) {
+        return [];
+    }
+
     const converted = convertCharacterBook(book);
-    return worldEntriesFromData(converted, 'character_book', book.name || character?.name || 'embedded');
+    return worldEntriesFromData(converted, 'character_book', worldName);
 }
 
 async function getLinkedWorldEntries(context) {
@@ -2696,6 +2768,10 @@ async function getLinkedWorldEntries(context) {
 
     const allEntries = [];
     for (const [worldName, source] of worldSources.entries()) {
+        if (!getWorldSelectionState(worldName)) {
+            debugLog('Skipped unselected worldbook', { worldName, source });
+            continue;
+        }
         const blockedRule = getBlockedWorldRule(worldName);
         if (blockedRule) {
             debugLog('Skipped blocked worldbook', { worldName, source, blockedRule });
@@ -5335,6 +5411,35 @@ function renderWorldBlocklistEditor() {
     }
 }
 
+function renderActiveWorldbookSelector(context = getContext()) {
+    const container = $('#ai_wbr_active_world_items');
+    if (!container.length) {
+        return;
+    }
+
+    const bindings = getActiveWorldbookBindings(context);
+    container.empty();
+
+    if (!bindings.length) {
+        container.append('<div class="ai-wbr-token-empty">当前聊天下暂无可识别的生效世界书</div>');
+        return;
+    }
+
+    for (const binding of bindings) {
+        const item = $('<label class="checkbox_label ai-wbr-world-option"></label>');
+        const checkbox = $('<input type="checkbox" />')
+            .prop('checked', getWorldSelectionState(binding.worldName))
+            .attr('data-world-name', binding.worldName)
+            .on('input', function () {
+                setWorldSelectionState(binding.worldName, !!$(this).prop('checked'));
+            });
+        item.append(checkbox);
+        item.append($('<span></span>').text(binding.worldName));
+        item.append($('<small class="ai-wbr-world-source"></small>').text(binding.source));
+        container.append(item);
+    }
+}
+
 function bindTitleBlocklistEditor() {
     const input = $('#ai_wbr_title_block_input');
     const button = $('#ai_wbr_title_block_add');
@@ -5435,6 +5540,7 @@ async function addSettingsUi() {
     bindMemoryPanelActions();
 
     renderRouterModelOptions();
+    renderActiveWorldbookSelector();
     $('#ai_wbr_router_model').val(settings.routerModel).on('change', function () {
         saveSetting('routerModel', String($(this).val() || ''));
     });
@@ -5492,6 +5598,7 @@ jQuery(async () => {
                 routerRaw: '',
             };
             setExtensionPrompt(PROMPT_KEY, '', settings.position, settings.depth, false, settings.role);
+            renderActiveWorldbookSelector();
         });
 
         debugLog('Loaded');

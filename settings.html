@@ -32,6 +32,11 @@
             </label>
 
             <div class="m-t-1">
+                <label><span class="fa-solid fa-circle-info ai-wbr-help" title="这里显示当前聊天/角色下实际生效的世界书。勾选表示允许参与前置召回；取消勾选后，这本世界书将不会被本插件搜索。"></span>当前生效世界书</label>
+                <div id="ai_wbr_active_world_items" class="ai-wbr-world-list"></div>
+            </div>
+
+            <div class="m-t-1">
                 <label for="ai_wbr_title_block_input"><span class="fa-solid fa-circle-info ai-wbr-help" title="按标题拦截世界书条目。输入一个标题关键词后点添加；命中的条目不会进入本插件的候选、AI 选择和注入。"></span>标题拦截规则</label>
                 <div class="ai-wbr-token-editor">
                     <input id="ai_wbr_title_block_input" class="text_pole" type="text" placeholder="例如：TavernDB-ACU-WrapperEnd" />
