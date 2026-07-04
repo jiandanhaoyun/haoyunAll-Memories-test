@@ -99,6 +99,7 @@ const defaultSettings = {
     memoryAutoRun: true,
     memoryAutoRunInterval: 20,
     memoryInjectToRouter: true,
+    memoryReviewRequired: true,
     memoryDebug: false,
     memoryScopeDebug: false,
     memoryScanMessages: 6,
@@ -1660,6 +1661,9 @@ function normalizeChatMemoryContainer(container) {
     normalized.lastPrompt = String(normalized.lastPrompt || '');
     normalized.lastRaw = String(normalized.lastRaw || '');
     normalized.lastError = String(normalized.lastError || '');
+    normalized.reviewQueue = Array.isArray(normalized.reviewQueue)
+        ? normalized.reviewQueue.filter(item => item && typeof item === 'object').slice(0, 40)
+        : [];
     return normalized;
 }
 
@@ -1874,6 +1878,94 @@ function saveMemoryGraph(graph = getMemoryGraph(), context = getContext(), skipR
     if (!skipRender) {
         renderMemoryPanel();
     }
+}
+
+function getMemoryReviewQueue(context = getContext()) {
+    const container = getChatMemoryContainer(context);
+    return Array.isArray(container.reviewQueue) ? container.reviewQueue : [];
+}
+
+function summarizeMemoryUpdateProposal(update) {
+    const nodes = Array.isArray(update?.nodes) ? update.nodes : [];
+    const updates = Array.isArray(update?.updates) ? update.updates : [];
+    const links = Array.isArray(update?.links) ? update.links : [];
+    const removes = [
+        ...(Array.isArray(update?.remove_node_ids) ? update.remove_node_ids : []),
+        ...(Array.isArray(update?.remove_link_ids) ? update.remove_link_ids : []),
+    ];
+    const state = update?.state && typeof update.state === 'object' ? update.state : {};
+    const stateChanges = Object.entries(state).filter(([, value]) => {
+        if (Array.isArray(value)) return value.length > 0;
+        if (value && typeof value === 'object') return Object.keys(value).length > 0;
+        return String(value || '').trim();
+    }).length;
+    return {
+        nodes: nodes.length,
+        updates: updates.length,
+        links: links.length,
+        removes: removes.length,
+        stateChanges,
+        title: truncateText(update?.summary || nodes[0]?.title || updates[0]?.title || 'Pending memory update', 80),
+    };
+}
+
+function enqueueMemoryReview(update, meta = {}, context = getContext()) {
+    const container = getChatMemoryContainer(context);
+    const now = new Date().toISOString();
+    const summary = summarizeMemoryUpdateProposal(update);
+    const item = {
+        id: `review_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+        status: 'pending',
+        reason: String(meta.reason || 'auto'),
+        signature: String(meta.signature || ''),
+        createdAt: now,
+        title: summary.title,
+        summary,
+        update,
+        prompt: truncateText(meta.prompt || '', 4000),
+        raw: truncateText(meta.raw || '', 4000),
+    };
+    container.reviewQueue = [item, ...(Array.isArray(container.reviewQueue) ? container.reviewQueue : [])].slice(0, 40);
+    persistChatMemoryContainer(container, context);
+    return item;
+}
+
+function removeMemoryReviewItem(id, context = getContext()) {
+    const container = getChatMemoryContainer(context);
+    container.reviewQueue = getMemoryReviewQueue(context).filter(item => String(item.id) !== String(id));
+    persistChatMemoryContainer(container, context);
+}
+
+function acceptMemoryReviewItem(id, context = getContext()) {
+    const item = getMemoryReviewQueue(context).find(entry => String(entry.id) === String(id));
+    if (!item) return null;
+    const container = getChatMemoryContainer(context);
+    container.graphBackup = cloneMemoryGraph(getMemoryGraph(context));
+    persistChatMemoryContainer(container, context);
+    const result = applyMemoryGraphUpdate(item.update, context);
+    removeMemoryReviewItem(id, context);
+    return result;
+}
+
+function rejectMemoryReviewItem(id, context = getContext()) {
+    removeMemoryReviewItem(id, context);
+}
+
+function acceptAllMemoryReviews(context = getContext()) {
+    const queue = [...getMemoryReviewQueue(context)];
+    let lastResult = null;
+    for (const item of queue) {
+        lastResult = acceptMemoryReviewItem(item.id, context) || lastResult;
+    }
+    return { count: queue.length, result: lastResult };
+}
+
+function clearMemoryReviewQueue(context = getContext()) {
+    const container = getChatMemoryContainer(context);
+    const count = getMemoryReviewQueue(context).length;
+    container.reviewQueue = [];
+    persistChatMemoryContainer(container, context);
+    return count;
 }
 
 function setMemoryStatus(text, context = getContext()) {
@@ -2623,7 +2715,26 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 container.graphBackup = cloneMemoryGraph(graph);
                 persistChatMemoryContainer(container, context);
                 
-                const memoryResult = applyMemoryGraphUpdate(update, context);
+                let memoryResult = null;
+                if (settings.memoryReviewRequired) {
+                    const review = enqueueMemoryReview(update, {
+                        reason,
+                        signature,
+                        prompt: promptLog,
+                        raw: summarizeRouterResponse(raw),
+                    }, context);
+                    setCurrentMemoryLastTurnSignature(signature, context);
+                    const updatedContainer = getChatMemoryContainer(context);
+                    updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
+                    persistChatMemoryContainer(updatedContainer, context);
+                    setMemoryStatus(`待确认：${getMemoryReviewQueue(context).length} 条记忆更新`);
+                    playStatusBurst('✦', 'memory');
+                    toastr?.info?.(`已加入待确认记忆：${review.title}`, '世界书读取');
+                    stopMemoryAnimation(true);
+                    return true;
+                }
+
+                memoryResult = applyMemoryGraphUpdate(update, context);
                 setCurrentMemoryLastTurnSignature(signature, context);
                 const updatedContainer = getChatMemoryContainer(context);
                 updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
@@ -4158,6 +4269,80 @@ function renderMemoryGraphSvg(graph) {
     bindMemoryGraphSvgInteractions();
 }
 
+function renderMemoryDashboard(graph) {
+    const dashboard = $('#ai_wbr_memory_dashboard').empty();
+    if (!dashboard.length) {
+        return;
+    }
+
+    const queueCount = getMemoryReviewQueue().length;
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const links = Array.isArray(graph?.links) ? graph.links : [];
+    const nodeTypes = nodes.reduce((acc, node) => {
+        const type = String(node.type || 'memory');
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+    }, {});
+    const topType = Object.entries(nodeTypes).sort((a, b) => b[1] - a[1])[0];
+    const activeTopics = Array.isArray(graph?.state?.active_topics)
+        ? graph.state.active_topics.slice(0, 3).join('，')
+        : '';
+    const cards = [
+        ['记忆节点', String(nodes.length), topType ? `最多：${topType[0]} × ${topType[1]}` : '等待写入'],
+        ['关系边', String(links.length), graph.updatedAt ? `更新：${new Date(graph.updatedAt).toLocaleString()}` : '暂无关系'],
+        ['待确认', String(queueCount), queueCount ? 'AI 更新等待确认' : '没有待处理更新'],
+        ['当前主题', activeTopics || '未识别', graph.lastSummary ? truncateText(graph.lastSummary, 64) : '等待整理剧情'],
+    ];
+
+    for (const [label, value, note] of cards) {
+        dashboard.append(
+            $('<div class="ai-wbr-memory-metric"></div>')
+                .append($('<div class="ai-wbr-memory-metric-label"></div>').text(label))
+                .append($('<div class="ai-wbr-memory-metric-value"></div>').text(value))
+                .append($('<div class="ai-wbr-memory-metric-note"></div>').text(note)),
+        );
+    }
+}
+
+function renderMemoryReviewQueue() {
+    const container = $('#ai_wbr_memory_review_queue').empty();
+    if (!container.length) {
+        return;
+    }
+
+    const queue = getMemoryReviewQueue();
+    container.append($('<div class="ai-wbr-memory-subtitle"><b>待确认记忆更新</b></div>'));
+    if (!queue.length) {
+        container.append('<div class="ai-wbr-token-empty">暂无待确认更新。开启“记忆更新需要确认”后，AI 整理结果会先出现在这里。</div>');
+        return;
+    }
+
+    for (const item of queue) {
+        const summary = item.summary || summarizeMemoryUpdateProposal(item.update);
+        const chips = [
+            `新增 ${summary.nodes || 0}`,
+            `修改 ${summary.updates || 0}`,
+            `关系 ${summary.links || 0}`,
+            `状态 ${summary.stateChanges || 0}`,
+            summary.removes ? `删除 ${summary.removes}` : '',
+        ].filter(Boolean);
+
+        container.append(
+            $('<div class="ai-wbr-memory-review-card"></div>')
+                .attr('data-memory-review-id', item.id)
+                .append($('<div class="ai-wbr-memory-review-head"></div>')
+                    .append($('<div></div>')
+                        .append($('<b></b>').text(item.title || '待确认记忆更新'))
+                        .append($('<small></small>').text(` ${item.reason || 'auto'} · ${item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}`)))
+                    .append($('<div class="ai-wbr-memory-review-actions"></div>')
+                        .append('<button class="menu_button ai-wbr-memory-review-accept" type="button">确认写入</button>')
+                        .append('<button class="menu_button ai-wbr-memory-review-reject" type="button">忽略</button>')))
+                .append($('<div class="ai-wbr-memory-review-chips"></div>').append(chips.map(chip => $('<span></span>').text(chip))))
+                .append($('<div class="ai-wbr-memory-review-summary"></div>').text(item.update?.summary || '无摘要')),
+        );
+    }
+}
+
 function getMemoryGraphSvgPoint(svg, clientX, clientY) {
     const point = svg.createSVGPoint();
     point.x = clientX;
@@ -4685,6 +4870,8 @@ function renderMemoryPanel() {
     $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt() || '尚无后置记忆 Prompt');
     $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw() || '尚无后置记忆返回');
     $('#ai_wbr_memory_error').text(getCurrentMemoryLastError() || '尚无错误');
+    renderMemoryDashboard(graph);
+    renderMemoryReviewQueue();
     renderMemoryGraphSvg(graph);
     renderMemoryNodeEditor(graph);
     renderMemoryEdgeEditor(graph);
@@ -4927,6 +5114,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_enabled', 'memoryEnabled');
     bindCheckbox('#ai_wbr_memory_auto_run', 'memoryAutoRun');
     bindCheckbox('#ai_wbr_memory_inject_to_router', 'memoryInjectToRouter');
+    bindCheckbox('#ai_wbr_memory_review_required', 'memoryReviewRequired');
     bindCheckbox('#ai_wbr_memory_debug', 'memoryDebug');
     bindCheckbox('#ai_wbr_memory_scope_debug', 'memoryScopeDebug');
     bindNumber('#ai_wbr_memory_auto_run_interval', 'memoryAutoRunInterval', 1, 100);
@@ -4938,6 +5126,26 @@ function bindMemoryPanelActions() {
     $('#ai_wbr_memory_run_now').on('click', async (event) => {
         event.preventDefault();
         await runMemoryGraphUpdate('manual');
+    });
+
+    $('#ai_wbr_memory_accept_all').on('click', (event) => {
+        event.preventDefault();
+        const accepted = acceptAllMemoryReviews();
+        if (accepted.count) {
+            setMemoryStatus(`已确认 ${accepted.count} 条记忆更新`);
+            toastr?.success?.(`已写入 ${accepted.count} 条待确认更新`, '世界书读取');
+        }
+        renderMemoryPanel();
+    });
+
+    $('#ai_wbr_memory_reject_all').on('click', (event) => {
+        event.preventDefault();
+        const count = clearMemoryReviewQueue();
+        if (count) {
+            setMemoryStatus(`已清空 ${count} 条待确认更新`);
+            toastr?.info?.('待确认记忆已清空', '世界书读取');
+        }
+        renderMemoryPanel();
     });
 
     $('#ai_wbr_memory_save_json').on('click', (event) => {
@@ -4971,6 +5179,21 @@ function bindMemoryPanelActions() {
     $('#ai_worldbook_router_settings')
         .on('click', '#ai_wbr_memory_node_popover, #ai_wbr_memory_node_popover *', function (event) {
             event.stopPropagation();
+        })
+        .on('click', '.ai-wbr-memory-review-accept', function () {
+            const id = String($(this).closest('[data-memory-review-id]').data('memoryReviewId') || '');
+            const result = acceptMemoryReviewItem(id);
+            if (result) {
+                setMemoryStatus(`已确认：${result.graph.nodes.length} 节点 / ${result.graph.links.length} 关系`);
+                toastr?.success?.('记忆更新已写入图谱', '世界书读取');
+            }
+            renderMemoryPanel();
+        })
+        .on('click', '.ai-wbr-memory-review-reject', function () {
+            const id = String($(this).closest('[data-memory-review-id]').data('memoryReviewId') || '');
+            rejectMemoryReviewItem(id);
+            setMemoryStatus('已忽略 1 条待确认更新');
+            renderMemoryPanel();
         })
         .on('input change', '[data-memory-state-field]', function () {
             const graph = getMemoryGraph();

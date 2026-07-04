@@ -141,6 +141,11 @@
                     <span class="fa-solid fa-circle-info ai-wbr-help" title="把当前记忆状态摘要加入前置世界书路由输入，帮助下一轮更稳定命中相关条目。"></span>
                     <span>记忆状态参与世界书路由</span>
                 </label>
+                <label class="checkbox_label" for="ai_wbr_memory_review_required">
+                    <input id="ai_wbr_memory_review_required" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后，AI 自动整理出的记忆更新会先进入待确认队列；你确认后才会写入长期记忆图谱。"></span>
+                    <span>记忆更新需要确认</span>
+                </label>
                 <label class="checkbox_label" for="ai_wbr_memory_debug">
                     <input id="ai_wbr_memory_debug" type="checkbox" />
                     <span class="fa-solid fa-circle-info ai-wbr-help" title="显示后置记忆整理发给 AI 的 Prompt、AI 原始返回和解析错误，方便排查。"></span>
@@ -174,11 +179,15 @@
 
                 <div class="ai-wbr-actions">
                     <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即整理本轮</button>
+                    <button id="ai_wbr_memory_accept_all" class="menu_button" type="button">确认全部更新</button>
+                    <button id="ai_wbr_memory_reject_all" class="menu_button" type="button">清空待确认</button>
                     <button id="ai_wbr_memory_save_json" class="menu_button" type="button">保存 JSON</button>
                     <button id="ai_wbr_memory_clear" class="menu_button" type="button">清空记忆</button>
                     <span id="ai_wbr_memory_status" class="ai-wbr-status">未启用</span>
                 </div>
 
+                <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
+                <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue"></div>
                 <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph"></div>
                 <div id="ai_wbr_memory_node_editor" class="ai-wbr-memory-node-editor"></div>
                 <div id="ai_wbr_memory_edge_editor" class="ai-wbr-memory-edge-editor"></div>

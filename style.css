@@ -753,18 +753,113 @@
 .ai-wbr-memory-graph {
     position: relative;
     margin-top: 0.75rem;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 8px;
+    border: 1px solid rgba(151, 207, 255, 0.32);
+    border-radius: 14px;
     background:
-        radial-gradient(circle at 50% 35%, rgba(92, 130, 255, 0.12), transparent 48%),
-        radial-gradient(circle at 32% 24%, rgba(58, 228, 193, 0.08), transparent 34%),
+        radial-gradient(circle at 50% 35%, rgba(92, 130, 255, 0.18), transparent 48%),
+        radial-gradient(circle at 32% 24%, rgba(58, 228, 193, 0.12), transparent 34%),
+        radial-gradient(circle at 72% 68%, rgba(255, 190, 110, 0.08), transparent 36%),
         linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
         color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(10, 12, 20, 0.96)) 92%, #07101f 8%);
-    background-size: auto, auto, 22px 22px, 22px 22px, auto;
+    background-size: auto, auto, auto, 22px 22px, 22px 22px, auto;
+    box-shadow:
+        inset 0 0 28px rgba(125, 212, 255, 0.08),
+        0 14px 26px rgba(0, 0, 0, 0.22);
     overflow: hidden;
     min-height: 16rem;
     height: clamp(18rem, 42vw, 22rem);
+}
+
+.ai-wbr-memory-dashboard {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin: 0.8rem 0 0.65rem;
+}
+
+.ai-wbr-memory-metric,
+.ai-wbr-memory-review-card {
+    border: 1px solid rgba(151, 207, 255, 0.24);
+    border-radius: 12px;
+    background:
+        linear-gradient(135deg, rgba(125, 212, 255, 0.08), rgba(183, 140, 255, 0.06)),
+        color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(18, 20, 28, 0.92)) 94%, transparent 6%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.ai-wbr-memory-metric {
+    padding: 0.62rem;
+    min-width: 0;
+}
+
+.ai-wbr-memory-metric-label,
+.ai-wbr-memory-metric-note {
+    color: var(--SmartThemeQuoteColor);
+    font-size: 0.76rem;
+    line-height: 1.28;
+    opacity: 0.88;
+}
+
+.ai-wbr-memory-metric-value {
+    margin: 0.12rem 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 86%, #9edfff 14%);
+    word-break: break-word;
+}
+
+.ai-wbr-memory-review-queue {
+    margin: 0.4rem 0 0.75rem;
+}
+
+.ai-wbr-memory-review-card {
+    padding: 0.65rem;
+    margin-top: 0.45rem;
+}
+
+.ai-wbr-memory-review-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.55rem;
+}
+
+.ai-wbr-memory-review-head small {
+    display: block;
+    margin-top: 0.12rem;
+    color: var(--SmartThemeQuoteColor);
+    font-size: 0.76rem;
+}
+
+.ai-wbr-memory-review-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.ai-wbr-memory-review-chips {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.ai-wbr-memory-review-chips span {
+    padding: 0.14rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(125, 212, 255, 0.12);
+    border: 1px solid rgba(125, 212, 255, 0.22);
+    font-size: 0.74rem;
+}
+
+.ai-wbr-memory-review-summary {
+    margin-top: 0.45rem;
+    color: var(--SmartThemeBodyColor);
+    opacity: 0.9;
+    line-height: 1.45;
+    word-break: break-word;
 }
 
 .ai-wbr-memory-graph-toolbar {
@@ -1293,6 +1388,23 @@
     .ai-wbr-memory-card-head,
     .ai-wbr-memory-link-grid {
         grid-template-columns: 1fr;
+    }
+
+    .ai-wbr-memory-dashboard {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .ai-wbr-memory-review-head {
+        flex-direction: column;
+    }
+
+    .ai-wbr-memory-review-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .ai-wbr-memory-review-actions .menu_button {
+        flex: 1 1 auto;
     }
 }
 
