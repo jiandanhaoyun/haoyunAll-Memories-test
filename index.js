@@ -5893,7 +5893,14 @@ installFetchFallbackHook();
 jQuery(async () => {
     try {
         ensureSettings();
-        await addSettingsUi();
+        createFloatingMemoryWindow();
+        try {
+            await addSettingsUi();
+        } catch (settingsError) {
+            lastRun.error = `设置面板加载失败，但独立控制台已启用：${settingsError?.message || settingsError}`;
+            console.error(`${LOG_PREFIX} Settings UI failed, standalone console remains available`, settingsError);
+            renderStandaloneConsole('overview');
+        }
         installFetchFallbackHook();
         installCompatSendHooks();
         ensureTavernHelperCompatHook();
@@ -5937,5 +5944,13 @@ jQuery(async () => {
         debugLog('Loaded');
     } catch (error) {
         console.error(`${LOG_PREFIX} Failed during initialization`, error);
+        try {
+            ensureSettings();
+            createFloatingMemoryWindow();
+            lastRun.error = `初始化失败：${error?.message || error}`;
+            renderStandaloneConsole('overview');
+        } catch (fallbackError) {
+            console.error(`${LOG_PREFIX} Failed to create fallback console`, fallbackError);
+        }
     }
 });

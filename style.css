@@ -1,7 +1,7 @@
 .ai-wbr-fab {
     position: fixed;
     right: 1.2rem;
-    bottom: 1.2rem;
+    bottom: calc(1.2rem + env(safe-area-inset-bottom, 0px));
     width: 3.2rem;
     height: 3.2rem;
     border-radius: 999px;
@@ -17,7 +17,7 @@
     align-items: center;
     justify-content: center;
     font-size: 1.4rem;
-    z-index: 28000;
+    z-index: 999999;
     cursor: pointer;
     backdrop-filter: blur(8px);
     transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.25, 1.15), box-shadow 0.25s ease, opacity 0.3s ease;
@@ -84,7 +84,7 @@
         0 20px 40px rgba(0, 0, 0, 0.4),
         0 0 24px rgba(125, 212, 255, 0.12);
     backdrop-filter: blur(12px);
-    z-index: 28500;
+    z-index: 1000000;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -454,6 +454,11 @@
 }
 
 @media (max-width: 640px) {
+    .ai-wbr-fab {
+        right: 0.85rem;
+        bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    }
+
     .ai-wbr-floating-window {
         width: 100vw;
         height: 100vh;
