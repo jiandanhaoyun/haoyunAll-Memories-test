@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.4.6';
+    const VERSION = '0.4.7';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -16,7 +16,16 @@
     const MENU_RETRY_LIMIT = 160;
     const DISPLAY_NAME = '\u4e16\u754c\u4e66\u8bfb\u53d6';
 
-    const currentScript = document.currentScript || Array.from(document.scripts).find((script) => script.src && script.src.includes('/ai-worldbook-router/')) || Array.from(document.scripts).find((script) => script.src && script.src.includes('/All-Memories/')) || Array.from(document.scripts).find((script) => script.src && script.src.endsWith('/index.js'));
+    const EXTENSION_DIR_NAMES = [
+        'haoyunAll-Memories',
+        'All-Memories',
+        'ai-worldbook-router',
+        'ai_worldbook_router',
+    ];
+    const currentScript = document.currentScript || Array.from(document.scripts).find((script) => {
+        const src = String(script.src || '');
+        return src.endsWith('/index.js') && EXTENSION_DIR_NAMES.some((name) => src.includes('/' + name + '/'));
+    });
     const baseUrl = currentScript?.src ? new URL('./', currentScript.src).href : './';
     let coreLoadError = null;
     let coreLoading = false;
@@ -43,6 +52,49 @@
         return url.href;
     }
 
+    function uniqueUrls(urls) {
+        return Array.from(new Set(urls.filter(Boolean)));
+    }
+
+    function resolveCoreCandidates() {
+        const candidates = [];
+        const addCandidate = (rawBase) => {
+            try {
+                const url = new URL('router-core.js', rawBase);
+                url.searchParams.set('v', VERSION);
+                url.searchParams.set('t', Date.now().toString(36));
+                candidates.push(url.href);
+            } catch (_) {
+                // Ignore malformed candidate paths.
+            }
+        };
+
+        if (baseUrl && baseUrl !== './') {
+            addCandidate(baseUrl);
+        }
+
+        for (const script of Array.from(document.scripts)) {
+            const src = String(script.src || '');
+            if (!src) continue;
+            if (src.endsWith('/index.js') && EXTENSION_DIR_NAMES.some((name) => src.includes('/' + name + '/'))) {
+                addCandidate(new URL('./', src).href);
+            }
+        }
+
+        const origin = location.origin || '';
+        const roots = [
+            '/scripts/extensions/third-party/',
+            '/scripts/extensions/',
+        ];
+        for (const root of roots) {
+            for (const name of EXTENSION_DIR_NAMES) {
+                addCandidate(origin + root + name + '/');
+            }
+        }
+
+        return uniqueUrls(candidates);
+    }
+
     function getExtensionMenuHost() {
         return document.getElementById('extensionsMenu') || document.getElementById('top-settings-holder');
     }
@@ -62,6 +114,7 @@
             'menuHost: ' + (getExtensionMenuHost()?.id || 'none'),
             'jQuery: ' + typeof (window.jQuery || window.$),
             'baseUrl: ' + baseUrl,
+            'coreCandidates: ' + resolveCoreCandidates().join(' | '),
             'coreError: ' + (coreLoadError?.message || coreLoadError || 'none'),
         ].join('\n');
     }
@@ -239,6 +292,34 @@
         return panel;
     }
 
+    function loadScriptOnce(src) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = src;
+            script.dataset.aiWbrCoreCandidate = 'true';
+            script.onload = () => resolve(src);
+            script.onerror = () => {
+                script.remove();
+                reject(new Error('router-core.js load failed: ' + src));
+            };
+            document.head.appendChild(script);
+        });
+    }
+
+    async function loadCoreFromCandidates(candidates) {
+        const errors = [];
+        for (const src of candidates) {
+            try {
+                await loadScriptOnce(src);
+                return src;
+            } catch (error) {
+                errors.push(error?.message || String(error));
+            }
+        }
+        throw new Error(errors.join('\n') || 'router-core.js load failed');
+    }
+
     function loadCore() {
         if (coreLoaded || window.ai_worldbook_router_intercept) {
             coreLoaded = true;
@@ -247,7 +328,12 @@
 
         const existing = document.getElementById(CORE_SCRIPT_ID);
         if (existing) {
-            return coreReadyPromise || Promise.resolve();
+            if (coreReadyPromise) return coreReadyPromise;
+            if (coreLoaded || window.ai_worldbook_router_intercept) {
+                coreLoaded = true;
+                return Promise.resolve();
+            }
+            existing.remove();
         }
 
         if (coreLoading) {
@@ -255,27 +341,28 @@
         }
 
         coreLoading = true;
-        coreReadyPromise = new Promise((resolve, reject) => {
+        coreReadyPromise = new Promise(async (resolve, reject) => {
             const script = document.createElement('script');
             script.id = CORE_SCRIPT_ID;
-            script.type = 'module';
-            script.src = resolveModule('router-core.js');
-            script.onload = () => {
+            script.type = 'application/json';
+            script.dataset.aiWbrLoader = 'true';
+            document.head.appendChild(script);
+
+            try {
+                const loadedFrom = await loadCoreFromCandidates(resolveCoreCandidates());
                 coreLoaded = true;
                 coreLoading = false;
                 coreLoadError = null;
-                console.info(LOG_PREFIX + ' core loaded');
+                console.info(LOG_PREFIX + ' core loaded', loadedFrom);
                 resolve();
-            };
-            script.onerror = () => {
+            } catch (error) {
                 coreLoaded = false;
                 coreLoading = false;
-                coreLoadError = new Error('router-core.js load failed');
+                coreLoadError = error;
                 coreReadyPromise = null;
                 console.error(LOG_PREFIX + ' core failed to load', coreLoadError);
                 reject(coreLoadError);
-            };
-            document.head.appendChild(script);
+            }
         });
         return coreReadyPromise;
     }
