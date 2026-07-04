@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.4.5';
+    const VERSION = '0.4.6';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -197,6 +197,48 @@
         return panel;
     }
 
+    function showInstantClickPanel(source = '入口') {
+        let panel = document.getElementById(PANEL_ID);
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = PANEL_ID;
+            (document.body || document.documentElement).appendChild(panel);
+        }
+
+        panel.style.cssText = [
+            'position:fixed',
+            'left:50%',
+            'top:50%',
+            'transform:translate(-50%,-50%)',
+            'z-index:2147483647',
+            'width:min(92vw,420px)',
+            'max-height:72vh',
+            'overflow:auto',
+            'border:1px solid rgba(176,225,255,.65)',
+            'border-radius:14px',
+            'background:rgba(12,15,22,.99)',
+            'color:#f2fbff',
+            'box-shadow:0 20px 48px rgba(0,0,0,.55)',
+            'padding:14px',
+            'font:14px/1.5 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif',
+            'pointer-events:auto',
+        ].join(';');
+
+        panel.innerHTML = [
+            '<div style="font-weight:800;font-size:16px;margin-bottom:8px;color:#d7f5ff">世界书读取</div>',
+            '<div>点击已收到：' + source + '。正在加载完整控制台...</div>',
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">',
+            '<button id="ai_wbr_panel_retry" type="button" style="' + buttonStyle(true) + '">再次打开</button>',
+            '<button id="ai_wbr_panel_close" type="button" style="' + buttonStyle(false) + '">关闭</button>',
+            '</div>',
+            '<pre style="white-space:pre-wrap;margin:10px 0 0;padding:8px;border-radius:8px;background:rgba(255,255,255,.08);color:#d7f5ff;font-size:12px">' + getDiagnostics().replace(/[&<>]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[char])) + '</pre>',
+        ].join('');
+
+        document.getElementById('ai_wbr_panel_retry')?.addEventListener('click', () => openConsole({ forcePanel: true }));
+        document.getElementById('ai_wbr_panel_close')?.addEventListener('click', () => panel.remove());
+        return panel;
+    }
+
     function loadCore() {
         if (coreLoaded || window.ai_worldbook_router_intercept) {
             coreLoaded = true;
@@ -262,7 +304,7 @@
 
         keepPanelUntil = Date.now() + 1600;
         closeHostMenusBeforeOpen();
-        const panel = showPanel(options.message);
+        const panel = document.getElementById(PANEL_ID) || showPanel(options.message);
 
         try {
             await loadCore();
@@ -301,9 +343,24 @@
         event?.preventDefault?.();
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
+        showInstantClickPanel(event?.type || '入口');
         const openNow = () => openConsole({ forcePanel: true });
-        openNow();
+        window.setTimeout(openNow, 20);
         window.setTimeout(openNow, 90);
+    }
+
+    function hardOpenFromButton(event) {
+        try {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            event?.stopImmediatePropagation?.();
+        } catch (_) {
+            // no-op
+        }
+        showInstantClickPanel(event?.type || '悬浮按钮');
+        window.setTimeout(() => openConsole({ forcePanel: true }), 20);
+        window.setTimeout(() => openConsole({ forcePanel: true }), 220);
+        return false;
     }
 
     function isWorldbookMenuTarget(target) {
@@ -432,11 +489,28 @@
             'backdrop-filter:blur(8px)',
             'cursor:pointer',
             'touch-action:none',
+            'pointer-events:auto',
+            'display:flex',
+            'align-items:center',
+            'justify-content:center',
+            'user-select:none',
+            '-webkit-user-select:none',
+            '-webkit-tap-highlight-color:transparent',
         ].join(';');
-        button.addEventListener('pointerdown', handleOpen, true);
-        button.addEventListener('touchstart', handleOpen, { capture: true, passive: false });
-        button.addEventListener('click', handleOpen, true);
-        button.addEventListener('pointerup', handleOpen, true);
+        button.onclick = hardOpenFromButton;
+        button.ontouchend = hardOpenFromButton;
+        button.onpointerup = hardOpenFromButton;
+        button.addEventListener('pointerdown', (event) => {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+        }, true);
+        button.addEventListener('touchstart', (event) => {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+        }, { capture: true, passive: false });
+        button.addEventListener('click', hardOpenFromButton, true);
+        button.addEventListener('pointerup', hardOpenFromButton, true);
+        button.addEventListener('touchend', hardOpenFromButton, { capture: true, passive: false });
         (document.body || document.documentElement).appendChild(button);
     }
 
