@@ -2659,7 +2659,6 @@ async function rebuildBookshelfBookVectors(bookId) {
                 chunkCount: targets.length,
             });
             setBookshelfStatus(`正在向量化《${book.title || book.fileName}》：${done} / ${targets.length}${failed ? `，失败 ${failed}` : ''}`);
-            renderBookshelfPanel();
             await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
@@ -5694,7 +5693,7 @@ function createBookshelfStandaloneFold() {
                                 <option value="other">其他资料</option>
                             </select>
                             <label>\u7ed1\u5b9a\u903b\u8f91</label>
-                            <div class="ai-wbr-bookshelf-bind-note">\u5bfc\u5165 TXT \u53ea\u5165\u5e93\uff1b\u5b8c\u6210\u5206\u5272\u5411\u91cf\u5316\u540e\uff0c\u5728\u4e66\u7c4d\u8be6\u60c5\u91cc\u624b\u52a8\u7ed1\u5b9a\u89d2\u8272\u5361\u3001\u804a\u5929\u6216\u5168\u5c40\uff0c\u4e5f\u53ef\u4ee5\u968f\u65f6\u53d6\u6d88\u6216\u66f4\u6362\u7ed1\u5b9a\u3002</div>
+                            <div class="ai-wbr-bookshelf-bind-note">\u5bfc\u5165 TXT \u53ea\u5165\u5e93\uff1b\u5b8c\u6210\u5206\u5272\u5411\u91cf\u5316\u540e\uff0c\u624b\u52a8\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361\u5373\u53ef\u5728\u8be5\u89d2\u8272\u7684\u5404\u4e2a\u804a\u5929\u4e2d\u81ea\u52a8\u751f\u6548\uff0c\u4e5f\u53ef\u8bbe\u4e3a\u5168\u5c40\u6216\u968f\u65f6\u53d6\u6d88\u7ed1\u5b9a\u3002</div>
                         </div>
                         <div class="ai-wbr-bookshelf-switches">
                             <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
@@ -6450,7 +6449,6 @@ async function renderBookshelfPanel() {
             detailBox.addClass('open');
             const selectedChunks = (chunksByBook.get(selectedBook.id) || []).sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
             const isCharBound = isBookshelfBookBound(selectedBook, 'character', scope.characterKey);
-            const isChatBound = isBookshelfBookBound(selectedBook, 'chat', scope.chatKey);
             const isGlobalBound = isBookshelfBookBound(selectedBook, 'global', 'global');
             detailBox.append(
                 $('<div class="ai-wbr-bookshelf-selected-detail"></div>')
@@ -6464,7 +6462,6 @@ async function renderBookshelfPanel() {
                     .append($('<button class="menu_button ai-wbr-bookshelf-rebuild" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(Number(selectedBook.vectorizedCount || 0) ? '\u91cd\u65b0\u5411\u91cf\u5316' : '\u5f00\u59cb\u5411\u91cf\u5316'))
                     .append($('<button class="menu_button ai-wbr-bookshelf-toggle" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(selectedBook.enabled === false ? '\u542f\u7528\u53ec\u56de' : '\u505c\u7528\u53ec\u56de'))
                     .append($('<button class="menu_button ai-wbr-bookshelf-bind-character" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isCharBound ? '\u53d6\u6d88\u89d2\u8272\u5361\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u89d2\u8272\u5361'))
-                    .append($('<button class="menu_button ai-wbr-bookshelf-bind-chat" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isChatBound ? '\u53d6\u6d88\u804a\u5929\u7ed1\u5b9a' : '\u7ed1\u5b9a\u5f53\u524d\u804a\u5929'))
                     .append($('<button class="menu_button ai-wbr-bookshelf-bind-global" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text(isGlobalBound ? '\u53d6\u6d88\u5168\u5c40' : '\u8bbe\u4e3a\u5168\u5c40'))
                     .append($('<button class="menu_button ai-wbr-bookshelf-clear-bindings" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u6e05\u7a7a\u7ed1\u5b9a'))
                     .append($('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button"></button>').attr('data-bookshelf-book-id', selectedBook.id).text('\u91cd\u7f6e\u5411\u91cf'))
