@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.12';
+const VERSION = '0.5.13';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -149,20 +149,6 @@ const VERSION = '0.5.12';
         win.style.setProperty('z-index', '2147483646', 'important');
         win.style.setProperty('transform', 'none', 'important');
         win.style.setProperty('display', 'flex', 'important');
-
-        if (window.matchMedia?.('(max-width: 720px)').matches) {
-            win.style.setProperty('position', 'fixed', 'important');
-            win.style.setProperty('inset', '0', 'important');
-            win.style.setProperty('right', '0', 'important');
-            win.style.setProperty('bottom', '0', 'important');
-            win.style.setProperty('left', '0', 'important');
-            win.style.setProperty('top', '0', 'important');
-            win.style.setProperty('width', '100vw', 'important');
-            win.style.setProperty('height', '100dvh', 'important');
-            win.style.setProperty('max-width', '100vw', 'important');
-            win.style.setProperty('max-height', '100dvh', 'important');
-            win.style.setProperty('border-radius', '0', 'important');
-        }
 
         return true;
     }
@@ -468,10 +454,7 @@ const VERSION = '0.5.12';
 
         window.setTimeout(() => {
             try {
-                if (!callOpenConsole('overview') && document.getElementById('ai_wbr_fab')) {
-                    document.getElementById('ai_wbr_fab').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                    window.setTimeout(() => callOpenConsole('overview'), 80);
-                }
+                callOpenConsole('overview');
                 window.setTimeout(() => callOpenConsole('overview'), 180);
             } catch (error) {
                 coreLoadError = error;

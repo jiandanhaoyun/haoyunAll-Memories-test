@@ -7078,7 +7078,38 @@ function createFloatingMemoryWindow() {
         fabLastToggleAt = now;
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        toggleWindow('graph');
+        openWindow('graph');
+        setTimeout(() => {
+            if (!win.hasClass('open') || getStandaloneTabId() !== 'graph') {
+                openWindow('graph');
+            }
+        }, 80);
+        setTimeout(() => {
+            if (!win.hasClass('open') || !$('#ai_wbr_memory_graph').is(':visible')) {
+                openWindow('graph');
+            }
+        }, 260);
+    }
+
+    function finishFabPointer(e) {
+        if (!fabDragging) {
+            return;
+        }
+        if (fabPointerId !== null && e.pointerId !== undefined && e.pointerId !== fabPointerId) {
+            return;
+        }
+        const wasTap = !fabMoved && e.type === 'pointerup';
+        fabDragging = false;
+        fabPointerId = null;
+        clampFloatingFabToViewport();
+        $('body').css('user-select', '');
+        if (wasTap) {
+            fabSuppressNextClick = true;
+            openFromFab(e);
+            setTimeout(() => {
+                fabSuppressNextClick = false;
+            }, 360);
+        }
     }
 
     fab.on('pointerdown', (e) => {
@@ -7112,25 +7143,8 @@ function createFloatingMemoryWindow() {
         e.preventDefault();
     });
 
-    $(document).on('pointerup.fabDrag pointercancel.fabDrag', (e) => {
-        if (fabDragging) {
-            if (fabPointerId !== null && e.pointerId !== undefined && e.pointerId !== fabPointerId) {
-                return;
-            }
-            const wasTap = !fabMoved && e.type === 'pointerup';
-            fabDragging = false;
-            fabPointerId = null;
-            clampFloatingFabToViewport();
-            $('body').css('user-select', '');
-            if (wasTap) {
-                fabSuppressNextClick = true;
-                openFromFab(e);
-                setTimeout(() => {
-                    fabSuppressNextClick = false;
-                }, 360);
-            }
-        }
-    });
+    fab.on('pointerup pointercancel', finishFabPointer);
+    $(document).on('pointerup.fabDrag pointercancel.fabDrag', finishFabPointer);
 
     fab.on('click', (e) => {
         if (fabSuppressNextClick) {
