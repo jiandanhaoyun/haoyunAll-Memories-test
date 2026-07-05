@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.7';
+const VERSION = '0.5.8';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -446,9 +446,12 @@ const VERSION = '0.5.7';
         if (now - lastOpenAt < 120) return;
         lastOpenAt = now;
 
-        keepPanelUntil = Date.now() + 1600;
+        const forcePanel = !!options.forcePanel;
+        keepPanelUntil = Date.now() + (forcePanel ? 1600 : 0);
         closeHostMenusBeforeOpen();
-        const panel = document.getElementById(PANEL_ID) || showPanel(options.message);
+        const panel = forcePanel
+            ? (document.getElementById(PANEL_ID) || showPanel(options.message))
+            : document.getElementById(PANEL_ID);
 
         try {
             await loadCore();
@@ -491,7 +494,7 @@ const VERSION = '0.5.7';
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
         showInstantClickPanel(event?.type || '入口');
-        const openNow = () => openConsole({ forcePanel: true });
+        const openNow = () => openConsole();
         window.setTimeout(openNow, 20);
         window.setTimeout(openNow, 90);
     }
@@ -505,8 +508,8 @@ const VERSION = '0.5.7';
             // no-op
         }
         showInstantClickPanel(event?.type || '悬浮按钮');
-        window.setTimeout(() => openConsole({ forcePanel: true }), 20);
-        window.setTimeout(() => openConsole({ forcePanel: true }), 220);
+        window.setTimeout(() => openConsole(), 20);
+        window.setTimeout(() => openConsole(), 220);
         return false;
     }
 
