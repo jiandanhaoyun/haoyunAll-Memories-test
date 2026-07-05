@@ -5641,55 +5641,32 @@ function createBookshelfStandaloneFold() {
         <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
             <summary>
                 <span>书架</span>
-                <small>像小说软件书架一样管理 TXT 补充资料；高级设置从侧边打开。</small>
+                <small>导入 TXT，向量化后按当前剧情语义召回。</small>
             </summary>
             <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
                 <div class="ai-wbr-bookshelf-app">
-                    <div class="ai-wbr-bookshelf-toolbar">
-                        <div>
-                            <b>我的书架</b>
-                            <small id="ai_wbr_bookshelf_status">书架待命。导入 TXT 后会进入待向量化。</small>
-                        </div>
-                        <div class="ai-wbr-bookshelf-toolbar-actions">
-                            <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
-                            <button id="ai_wbr_bookshelf_import" class="menu_button" type="button">导入 TXT</button>
-                            <button id="ai_wbr_bookshelf_open_settings" class="menu_button" type="button">设置</button>
-                        </div>
+                    <div class="ai-wbr-bookshelf-top">
+                        <div class="ai-wbr-bookshelf-title">书架</div>
+                        <button id="ai_wbr_bookshelf_open_settings" class="ai-wbr-bookshelf-more" type="button" title="书架设置">•••</button>
+                    </div>
+                    <div class="ai-wbr-bookshelf-tabs">
+                        <span class="ai-wbr-bookshelf-read-badge">向量召回</span>
+                        <button id="ai_wbr_bookshelf_import" class="ai-wbr-bookshelf-link" type="button">导入TXT</button>
+                        <button id="ai_wbr_bookshelf_test_open" class="ai-wbr-bookshelf-link" type="button">召回测试</button>
                     </div>
 
-                    <div class="ai-wbr-bookshelf-quickbar">
-                        <select id="ai_wbr_bookshelf_import_type" class="text_pole">
-                            <option value="plot">剧情记录</option>
-                            <option value="character">人物档案</option>
-                            <option value="world">世界观</option>
-                            <option value="rule">规则设定</option>
-                            <option value="other">其他资料</option>
-                        </select>
-                        <select id="ai_wbr_bookshelf_import_binding" class="text_pole">
-                            <option value="character">绑定当前角色</option>
-                            <option value="chat">绑定当前聊天</option>
-                            <option value="global">全局补充</option>
-                            <option value="none">暂不绑定</option>
-                        </select>
-                        <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用召回</label>
-                        <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />自动注入</label>
-                    </div>
+                    <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
+                    <div id="ai_wbr_bookshelf_status" class="ai-wbr-bookshelf-status">书架待命。导入 TXT 后点击书籍向量化。</div>
+                    <div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div>
+                    <div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div>
 
-                    <div class="ai-wbr-bookshelf-layout">
-                        <section class="ai-wbr-bookshelf-main">
-                            <div class="ai-wbr-bookshelf-section-title">
-                                <b>书籍</b>
-                                <span id="ai_wbr_bookshelf_count">0 本</span>
-                            </div>
-                            <div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div>
-                        </section>
-                        <section class="ai-wbr-bookshelf-detail-pane">
-                            <div class="ai-wbr-bookshelf-section-title">
-                                <b>详情</b>
-                                <span>选中书籍后编辑</span>
-                            </div>
-                            <div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div>
-                        </section>
+                    <div class="ai-wbr-bookshelf-test" id="ai_wbr_bookshelf_test_panel">
+                        <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
+                        <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试向量书架会召回哪些片段。"></textarea>
+                        <div class="ai-wbr-bookshelf-actions">
+                            <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                        </div>
+                        <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
                     </div>
 
                     <div class="ai-wbr-bookshelf-drawer-backdrop" id="ai_wbr_bookshelf_settings_backdrop"></div>
@@ -5702,7 +5679,26 @@ function createBookshelfStandaloneFold() {
                             <button id="ai_wbr_bookshelf_close_settings" class="menu_button" type="button">关闭</button>
                         </div>
                         <div id="ai_wbr_bookshelf_scope" class="ai-wbr-bookshelf-scope"></div>
+                        <div class="ai-wbr-bookshelf-import-options">
+                            <label for="ai_wbr_bookshelf_import_type">导入分类</label>
+                            <select id="ai_wbr_bookshelf_import_type" class="text_pole">
+                                <option value="plot">剧情记录</option>
+                                <option value="character">人物档案</option>
+                                <option value="world">世界观</option>
+                                <option value="rule">规则设定</option>
+                                <option value="other">其他资料</option>
+                            </select>
+                            <label for="ai_wbr_bookshelf_import_binding">默认绑定</label>
+                            <select id="ai_wbr_bookshelf_import_binding" class="text_pole">
+                                <option value="character">绑定当前角色</option>
+                                <option value="chat">绑定当前聊天</option>
+                                <option value="global">全局补充</option>
+                                <option value="none">暂不绑定</option>
+                            </select>
+                        </div>
                         <div class="ai-wbr-bookshelf-switches">
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />生成前自动注入</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />图谱记忆参与召回</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />仅召回绑定书籍</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />允许全局书籍</label>
@@ -5739,14 +5735,6 @@ function createBookshelfStandaloneFold() {
                             <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
                             <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
                             <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
-                        </div>
-                        <div class="ai-wbr-bookshelf-test">
-                            <div class="ai-wbr-memory-subtitle"><b>召回测试</b></div>
-                            <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试图谱记忆和绑定 TXT 会召回哪些片段。"></textarea>
-                            <div class="ai-wbr-bookshelf-actions">
-                                <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
-                            </div>
-                            <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
                         </div>
                     </aside>
                 </div>
@@ -6351,19 +6339,21 @@ function createBookshelfBookCard(book, selected) {
     const modeLabel = book.embeddingMode
         ? `${book.embeddingMode}${book.embeddingModel ? ` / ${book.embeddingModel}` : ''}${book.embeddingDim ? ` / ${book.embeddingDim}维` : ''}`
         : '待向量化';
+    const progress = Number(book.chunkCount || 0)
+        ? Math.round((Number(book.vectorizedCount || 0) / Number(book.chunkCount || 1)) * 100)
+        : 0;
+    const badge = book.enabled === false ? '停用' : Number(book.vectorizedCount || 0) ? '已向量' : '待向量';
     return $('<div class="ai-wbr-bookshelf-book"></div>')
         .toggleClass('selected', !!selected)
         .attr('data-bookshelf-book-id', book.id)
         .append(
-            $('<div class="ai-wbr-bookshelf-book-head"></div>')
-                .append($('<b></b>').text(`《${book.title || book.fileName || '未命名'}》`))
-                .append($('<span></span>').text(getBookshelfStatusLabel(book))),
-            $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${getBookshelfTypeLabel(book.type)} · ${book.vectorizedCount || 0}/${book.chunkCount || 0} 个片段 · ${modeLabel}`),
-            $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(book).map(label => $('<span></span>').text(label))),
-            $('<div class="ai-wbr-bookshelf-actions"></div>')
-                .append('<button class="menu_button ai-wbr-bookshelf-select" type="button">打开</button>')
-                .append(`<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">${Number(book.vectorizedCount || 0) ? '重新向量化' : '开始向量化'}</button>`)
-                .append(`<button class="menu_button ai-wbr-bookshelf-toggle" type="button">${book.enabled === false ? '启用' : '禁用'}</button>`),
+            $('<button class="ai-wbr-bookshelf-cover ai-wbr-bookshelf-select" type="button"></button>')
+                .append($('<span class="ai-wbr-bookshelf-cover-badge"></span>').text(badge))
+                .append($('<b></b>').text(book.title || book.fileName || '未命名'))
+                .append($('<small></small>').text(getBookshelfTypeLabel(book.type))),
+            $('<div class="ai-wbr-bookshelf-book-title"></div>').text(book.title || book.fileName || '未命名'),
+            $('<div class="ai-wbr-bookshelf-book-meta"></div>').text(`${book.chunkCount || 0} 段 · ${progress}% · ${getBookshelfStatusLabel(book)}`),
+            $('<div class="ai-wbr-bookshelf-book-provider"></div>').text(modeLabel),
         );
 }
 
@@ -6437,8 +6427,8 @@ async function renderBookshelfPanel() {
             chunksByBook.get(chunk.bookId).push(chunk);
         }
 
-        if (!selectedBookshelfBookId || !allBooks.some(book => book.id === selectedBookshelfBookId)) {
-            selectedBookshelfBookId = allBooks[0]?.id || '';
+        if (selectedBookshelfBookId && !allBooks.some(book => book.id === selectedBookshelfBookId)) {
+            selectedBookshelfBookId = '';
         }
 
         booksBox.empty();
@@ -6453,20 +6443,24 @@ async function renderBookshelfPanel() {
 
         const selectedBook = allBooks.find(book => book.id === selectedBookshelfBookId) || null;
         if (!selectedBook) {
-            detailBox.append('<div class="ai-wbr-token-empty">选择一本书后，这里会显示绑定、片段和向量化状态。</div>');
+            detailBox.removeClass('open');
+            detailBox.append('<div class="ai-wbr-token-empty">导入 TXT 后，点书籍封面查看向量化和删除操作。</div>');
         } else {
+            detailBox.addClass('open');
             const selectedChunks = (chunksByBook.get(selectedBook.id) || []).sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
             const isCharBound = isBookshelfBookBound(selectedBook, 'character', scope.characterKey);
             const isChatBound = isBookshelfBookBound(selectedBook, 'chat', scope.chatKey);
             const isGlobalBound = isBookshelfBookBound(selectedBook, 'global', 'global');
             detailBox.append(
+                $('<div class="ai-wbr-bookshelf-selected-detail"></div>')
+                    .attr('data-bookshelf-book-id', selectedBook.id)
+                    .append(
                 $('<div class="ai-wbr-bookshelf-detail-head"></div>')
                     .append($('<b></b>').text(`《${selectedBook.title || selectedBook.fileName || '未命名'}》`))
                     .append($('<span></span>').text(`${getBookshelfTypeLabel(selectedBook.type)} · ${getBookshelfStatusLabel(selectedBook)} · ${selectedBook.vectorizedCount || 0}/${selectedBook.chunkCount || 0}`)),
                 $('<div class="ai-wbr-bookshelf-tags"></div>').append(getBookshelfBindingLabels(selectedBook).map(label => $('<span></span>').text(label))),
                 $('<div class="ai-wbr-bookshelf-actions"></div>')
                     .append(`<button class="menu_button ai-wbr-bookshelf-rebuild" type="button">${Number(selectedBook.vectorizedCount || 0) ? '重新向量化' : '开始向量化'}</button>`)
-                    .append('<button class="menu_button ai-wbr-bookshelf-clear-vector" type="button">重置向量</button>')
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-character" type="button">${isCharBound ? '取消角色绑定' : '绑定当前角色'}</button>`)
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-chat" type="button">${isChatBound ? '取消聊天绑定' : '绑定当前聊天'}</button>`)
                     .append(`<button class="menu_button ai-wbr-bookshelf-bind-global" type="button">${isGlobalBound ? '取消全局' : '设为全局'}</button>`)
@@ -6483,6 +6477,7 @@ async function renderBookshelfPanel() {
                             .append($('<p></p>').text(truncateText(chunk.text || '', 260)))
                     )),
                 ),
+                    ),
             );
             if (selectedChunks.length > 24) {
                 detailBox.append($('<div class="ai-wbr-token-empty"></div>').text(`已显示前 24 个片段，共 ${selectedChunks.length} 个。`));
@@ -7649,7 +7644,7 @@ function bindMemoryPanelActions() {
         setMemoryStatus('已清空');
     });
 
-    $('#ai_wbr_bookshelf_import').on('click', (event) => {
+    $(document).off('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import').on('click.aiWbrBookshelfImport', '#ai_wbr_bookshelf_import', (event) => {
         event.preventDefault();
         $('#ai_wbr_bookshelf_file').trigger('click');
     });
@@ -7666,7 +7661,7 @@ function bindMemoryPanelActions() {
             $('#ai_wbr_bookshelf_settings_backdrop').removeClass('open');
         });
 
-    $('#ai_wbr_bookshelf_file').on('change', async function () {
+    $(document).off('change.aiWbrBookshelfFile', '#ai_wbr_bookshelf_file').on('change.aiWbrBookshelfFile', '#ai_wbr_bookshelf_file', async function () {
         try {
             await importBookshelfFiles(this.files);
         } catch (error) {
@@ -7675,6 +7670,11 @@ function bindMemoryPanelActions() {
         } finally {
             this.value = '';
         }
+    });
+
+    $(document).off('click.aiWbrBookshelfTestOpen', '#ai_wbr_bookshelf_test_open').on('click.aiWbrBookshelfTestOpen', '#ai_wbr_bookshelf_test_open', (event) => {
+        event.preventDefault();
+        $('#ai_wbr_bookshelf_test_panel').toggleClass('open');
     });
 
     $(document).off('click.aiWbrBookshelfTest', '#ai_wbr_bookshelf_test').on('click.aiWbrBookshelfTest', '#ai_wbr_bookshelf_test', async (event) => {
@@ -7780,6 +7780,12 @@ function bindMemoryPanelActions() {
 
     $(document)
         .off('.aiWbrBookshelf')
+        .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-book', function (event) {
+            if ($(event.target).closest('button').length && !$(event.target).closest('.ai-wbr-bookshelf-cover').length) return;
+            event.preventDefault();
+            selectedBookshelfBookId = String($(this).data('bookshelfBookId') || '');
+            renderBookshelfPanel();
+        })
         .on('click.aiWbrBookshelf', '.ai-wbr-bookshelf-select', function (event) {
             event.preventDefault();
             selectedBookshelfBookId = String($(this).closest('[data-bookshelf-book-id]').data('bookshelfBookId') || '');
