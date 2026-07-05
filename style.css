@@ -19,6 +19,9 @@
     font-size: 1.4rem;
     z-index: 999999;
     cursor: pointer;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
     backdrop-filter: blur(8px);
     transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.25, 1.15), box-shadow 0.25s ease, opacity 0.3s ease;
     opacity: 0;

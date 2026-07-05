@@ -7064,11 +7064,28 @@ function createFloatingMemoryWindow() {
     let fabDragging = false;
     let fabMoved = false;
     let fabStartX = 0, fabStartY = 0, fabInitialLeft = 0, fabInitialTop = 0;
+    let fabPointerId = null;
+    let fabSuppressNextClick = false;
+    let fabLastToggleAt = 0;
+
+    function openFromFab(event) {
+        const now = Date.now();
+        if (now - fabLastToggleAt < 260) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            return;
+        }
+        fabLastToggleAt = now;
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        toggleWindow('graph');
+    }
 
     fab.on('pointerdown', (e) => {
         if (e.button !== undefined && e.button !== 0) return; // 仅左键
         fabDragging = true;
         fabMoved = false;
+        fabPointerId = e.pointerId;
         fabStartX = e.clientX;
         fabStartY = e.clientY;
         // 把 right/bottom 定位转换为 left/top，便于拖拽
@@ -7095,15 +7112,32 @@ function createFloatingMemoryWindow() {
         e.preventDefault();
     });
 
-    $(document).on('pointerup.fabDrag pointercancel.fabDrag', () => {
+    $(document).on('pointerup.fabDrag pointercancel.fabDrag', (e) => {
         if (fabDragging) {
+            if (fabPointerId !== null && e.pointerId !== undefined && e.pointerId !== fabPointerId) {
+                return;
+            }
+            const wasTap = !fabMoved && e.type === 'pointerup';
             fabDragging = false;
+            fabPointerId = null;
             clampFloatingFabToViewport();
             $('body').css('user-select', '');
+            if (wasTap) {
+                fabSuppressNextClick = true;
+                openFromFab(e);
+                setTimeout(() => {
+                    fabSuppressNextClick = false;
+                }, 360);
+            }
         }
     });
 
     fab.on('click', (e) => {
+        if (fabSuppressNextClick) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         if (fabMoved) {
             // 拖拽结束，抑制本次开窗
             fabMoved = false;
@@ -7111,7 +7145,16 @@ function createFloatingMemoryWindow() {
             e.stopPropagation();
             return;
         }
-        toggleWindow('graph');
+        openFromFab(e);
+    });
+
+    fab.on('touchend', (e) => {
+        if (fabSuppressNextClick) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        openFromFab(e);
     });
 
     $('#ai_wbr_floating_close').on('click touchend pointerup', (event) => {
