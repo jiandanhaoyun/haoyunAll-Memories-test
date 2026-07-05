@@ -4398,6 +4398,12 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
     } else if (tabId === 'graph') {
         body.append($('#ai_wbr_memory_graph_section'));
         renderMemoryPanel('graph');
+        requestAnimationFrame(() => {
+            if (getStandaloneTabId() === 'graph' && $('#ai_wbr_memory_graph').is(':visible')) {
+                fitMemoryGraphToContainer();
+                renderMemoryPanel('graph');
+            }
+        });
     } else if (tabId === 'model') {
         renderStandaloneModel(body);
     } else if (tabId === 'debug') {
@@ -4538,6 +4544,10 @@ function renderMemoryGraphSvg(graph) {
         return;
     }
 
+    graph = graph && typeof graph === 'object' ? graph : getDefaultMemoryGraph();
+    graph.nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    graph.links = Array.isArray(graph.links) ? graph.links : [];
+
     const nodes = graph.nodes.slice(0, 18);
     if (!nodes.length) {
         container.html('<div class="ai-wbr-token-empty">暂无记忆节点。生成回复后会自动整理，或点击“立即整理本轮”。</div>');
@@ -4636,7 +4646,13 @@ function renderMemoryGraphSvg(graph) {
         </g>`;
     }).join('');
 
-    if (!memoryGraphView || !Number.isFinite(memoryGraphView.width)) {
+    if (!memoryGraphView
+        || !Number.isFinite(memoryGraphView.x)
+        || !Number.isFinite(memoryGraphView.y)
+        || !Number.isFinite(memoryGraphView.width)
+        || !Number.isFinite(memoryGraphView.height)
+        || memoryGraphView.width < 120
+        || memoryGraphView.height < 80) {
         memoryGraphView = { x: 0, y: 0, width, height };
     }
     syncMemoryGraphViewToContainerAspect(container[0]);
@@ -4740,19 +4756,34 @@ function getMemoryGraphSvgPoint(svg, clientX, clientY) {
 }
 
 function updateMemoryGraphViewBox(svg) {
+    if (!svg || !memoryGraphView) {
+        return;
+    }
     svg.setAttribute('viewBox', `${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}`);
 }
 
 function getMemoryGraphViewportMetrics(containerEl) {
     const rect = containerEl?.getBoundingClientRect?.();
-    const pixelWidth = Math.max(1, Number(rect?.width || 1));
-    const pixelHeight = Math.max(1, Number(rect?.height || 1));
+    const parentRect = containerEl?.parentElement?.getBoundingClientRect?.();
+    const fallbackWidth = Math.max(320, Number(window.innerWidth || 960) - 420);
+    const fallbackHeight = Math.max(320, Number(window.innerHeight || 720) - 150);
+    const pixelWidth = Math.max(320, Number(rect?.width || parentRect?.width || fallbackWidth));
+    const pixelHeight = Math.max(260, Number(rect?.height || parentRect?.height || fallbackHeight));
     const aspect = pixelWidth / pixelHeight;
     return {
         aspect,
         baseWidth: MEMORY_GRAPH_CANVAS_WIDTH,
         baseHeight: Math.max(220, MEMORY_GRAPH_CANVAS_WIDTH / aspect),
     };
+}
+
+function fitMemoryGraphToContainer() {
+    const container = $('#ai_wbr_memory_graph');
+    if (!container.length) {
+        return;
+    }
+    const viewport = getMemoryGraphViewportMetrics(container[0]);
+    memoryGraphView = { x: 0, y: 0, width: viewport.baseWidth, height: viewport.baseHeight };
 }
 
 function syncMemoryGraphViewToContainerAspect(containerEl) {
