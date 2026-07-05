@@ -1316,6 +1316,77 @@
     margin-top: 0.38rem;
 }
 
+.ai-wbr-memory-fold {
+    margin-top: 0.65rem;
+    border: 1px solid rgba(151, 207, 255, 0.22);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(20,20,24,0.9)) 94%, transparent 6%);
+    overflow: hidden;
+}
+
+.ai-wbr-memory-fold[open] {
+    border-color: rgba(151, 207, 255, 0.34);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.ai-wbr-memory-fold summary {
+    display: grid;
+    grid-template-columns: minmax(6rem, 0.8fr) 1fr;
+    gap: 0.45rem 0.75rem;
+    align-items: center;
+    padding: 0.65rem 0.75rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.ai-wbr-memory-fold summary::-webkit-details-marker {
+    display: none;
+}
+
+.ai-wbr-memory-fold summary::before {
+    content: '▸';
+    grid-column: 1;
+    margin-right: 0.35rem;
+    color: #8fd7ff;
+    font-size: 0.9rem;
+}
+
+.ai-wbr-memory-fold[open] summary::before {
+    content: '▾';
+}
+
+.ai-wbr-memory-fold summary span {
+    grid-column: 1;
+    grid-row: 1;
+    padding-left: 1.05rem;
+    font-weight: 700;
+}
+
+.ai-wbr-memory-fold summary small {
+    grid-column: 2;
+    color: var(--SmartThemeQuoteColor);
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.ai-wbr-memory-fold-body {
+    padding: 0 0.75rem 0.75rem;
+}
+
+.ai-wbr-memory-fold-body.ai-wbr-grid,
+.ai-wbr-memory-fold-body.ai-wbr-actions {
+    margin-top: 0;
+}
+
+.ai-wbr-memory-fold-attention {
+    border-color: rgba(255, 196, 87, 0.55);
+}
+
+.ai-wbr-memory-fold-attention summary {
+    background: rgba(255, 196, 87, 0.08);
+}
+
 .ai-wbr-memory-subtitle {
     margin-top: 0.8rem;
     margin-bottom: 0.45rem;
@@ -1331,7 +1402,7 @@
 }
 
 .ai-wbr-memory-history-import {
-    margin-top: 0.8rem;
+    margin-top: 0;
     padding: 0.75rem;
     border: 1px solid rgba(151, 207, 255, 0.24);
     border-radius: 10px;
@@ -1708,6 +1779,15 @@
 @media (max-width: 640px) {
     .ai-wbr-grid {
         grid-template-columns: 1fr;
+    }
+
+    .ai-wbr-memory-fold summary {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-wbr-memory-fold summary small {
+        grid-column: 1;
+        padding-left: 1.05rem;
     }
 
     .ai-wbr-memory-history-grid {

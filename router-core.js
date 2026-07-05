@@ -5008,6 +5008,13 @@ function renderMemoryReviewQueue() {
     }
 
     const queue = getMemoryReviewQueue();
+    const reviewFold = $('.ai-wbr-memory-review-fold');
+    $('#ai_wbr_memory_review_badge').text(queue.length ? `${queue.length} 条待确认，建议先处理。` : '暂无待确认。');
+    reviewFold.toggleClass('ai-wbr-memory-fold-attention', queue.length > 0);
+    if (queue.length) {
+        reviewFold.prop('open', true);
+    }
+
     container.append($('<div class="ai-wbr-memory-subtitle"><b>待确认记忆更新</b></div>'));
     if (!queue.length) {
         container.append('<div class="ai-wbr-token-empty">暂无待确认更新。开启“记忆更新需要确认”后，AI 整理结果会先出现在这里。</div>');
@@ -5763,7 +5770,9 @@ function renderMemoryPanel(scope = 'all') {
     if (hasMemoryPanel) {
         $('#ai_wbr_memory_status').text(getCurrentMemoryStatus() || (settings.memoryEnabled ? '待整理' : '未启用'));
         $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
-        $('#ai_wbr_memory_debug_panel').toggle(!!settings.memoryDebug);
+        const showMemoryDebugDetails = !!settings.memoryDebug || !!getCurrentMemoryLastError(context);
+        $('.ai-wbr-memory-debug-fold').prop('open', showMemoryDebugDetails);
+        $('#ai_wbr_memory_debug_panel .ai-wbr-router-raw-block').toggle(showMemoryDebugDetails);
         $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt() || '尚无后置记忆 Prompt');
         $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw() || '尚无后置记忆返回');
         $('#ai_wbr_memory_error').text(getCurrentMemoryLastError() || '尚无错误');

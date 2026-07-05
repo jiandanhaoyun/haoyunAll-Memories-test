@@ -131,80 +131,91 @@
                 <div class="ai-wbr-section-title">
                     <b>记忆存储与整理</b>
                 </div>
-                <label class="checkbox_label" for="ai_wbr_memory_enabled">
-                    <input id="ai_wbr_memory_enabled" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="启用后把聊天中长期有价值的信息写入当前聊天/角色对应的记忆容器。"></span>
-                    <span>启用记忆存储</span>
-                </label>
-                <label class="checkbox_label" for="ai_wbr_memory_realtime_enabled">
-                    <input id="ai_wbr_memory_realtime_enabled" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后每轮回复结束都会读取最近几条楼层，实时补充刚发生的事实、状态和关系。"></span>
-                    <span>启用实时整理（每轮更新）</span>
-                </label>
-                <label class="checkbox_label" for="ai_wbr_memory_summary_enabled">
-                    <input id="ai_wbr_memory_summary_enabled" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后按间隔读取更长一段上下文，用于压缩、归纳和修正长期记忆。"></span>
-                    <span>启用间隔归纳</span>
-                </label>
-                <label class="checkbox_label" for="ai_wbr_memory_inject_to_router">
-                    <input id="ai_wbr_memory_inject_to_router" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="把当前记忆状态摘要加入前置世界书路由输入，帮助下一轮更稳定命中相关条目。"></span>
-                    <span>记忆状态参与世界书路由</span>
-                </label>
-                <label class="checkbox_label" for="ai_wbr_memory_review_required">
-                    <input id="ai_wbr_memory_review_required" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后，AI 自动整理出的记忆更新会先进入待确认队列；你确认后才会写入长期记忆图谱。"></span>
-                    <span>记忆更新需要确认</span>
-                </label>
-                <label class="checkbox_label" for="ai_wbr_memory_debug">
-                    <input id="ai_wbr_memory_debug" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="显示后置记忆整理发给 AI 的 Prompt、AI 原始返回和解析错误，方便排查。"></span>
-                    <span>记忆调试模式</span>
-                </label>
-                <label class="checkbox_label" for="ai_wbr_memory_scope_debug">
-                    <input id="ai_wbr_memory_scope_debug" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="在浏览器控制台输出切卡/切聊天、读取记忆、保存记忆和面板重绘的详细日志。"></span>
-                    <span>记忆作用域控制台调试</span>
-                </label>
-
-                <div class="ai-wbr-grid">
-                    <label for="ai_wbr_memory_realtime_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="实时整理读取最近多少条聊天消息。建议 3-6 条，用于每轮快速更新，不承担长期压缩。"></span>实时整理读取消息数</label>
-                    <input id="ai_wbr_memory_realtime_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
-
-                    <label for="ai_wbr_memory_summary_interval_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="间隔归纳每隔多少条聊天消息触发一次。填 20 表示每 20 条聊天楼层进行一次长期归纳。"></span>间隔归纳消息数</label>
-                    <input id="ai_wbr_memory_summary_interval_messages" class="text_pole" type="number" min="1" max="100" step="1" />
-
-                    <label for="ai_wbr_memory_summary_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="间隔归纳读取最近多少条聊天消息。建议比实时整理更大，用于压缩阶段性剧情和关系变化。"></span>间隔归纳读取消息数</label>
-                    <input id="ai_wbr_memory_summary_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
-
-                    <label for="ai_wbr_memory_max_nodes"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少个节点，超出后优先保留重要度较高、最近更新的节点。"></span>最大记忆节点数</label>
-                    <input id="ai_wbr_memory_max_nodes" class="text_pole" type="number" min="5" max="200" step="1" />
-
-                    <label for="ai_wbr_memory_max_links"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少条关系边。"></span>最大记忆关系数</label>
-                    <input id="ai_wbr_memory_max_links" class="text_pole" type="number" min="0" max="400" step="1" />
-
-                    <label for="ai_wbr_memory_request_max_tokens"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理请求实际发送给模型的 max_tokens 上限。普通整理和重试都使用这个值。"></span>后置请求 tokens 上限</label>
-                    <input id="ai_wbr_memory_request_max_tokens" class="text_pole" type="number" min="32" max="100000" step="16" />
-
-                    <label for="ai_wbr_memory_retries"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理失败、空回或解析失败时，额外自动重试几次。"></span>后置记忆重试次数</label>
-                    <input id="ai_wbr_memory_retries" class="text_pole" type="number" min="0" max="10" step="1" />
-                </div>
-
-                <div class="ai-wbr-actions">
-                    <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即实时整理</button>
-                    <button id="ai_wbr_memory_summary_now" class="menu_button" type="button">立即归纳整理</button>
-                    <button id="ai_wbr_memory_accept_all" class="menu_button" type="button">确认全部更新</button>
-                    <button id="ai_wbr_memory_reject_all" class="menu_button" type="button">清空待确认</button>
-                    <button id="ai_wbr_memory_save_json" class="menu_button" type="button">保存 JSON</button>
-                    <button id="ai_wbr_memory_clear" class="menu_button" type="button">清空记忆</button>
-                    <span id="ai_wbr_memory_status" class="ai-wbr-status">未启用</span>
-                </div>
-
-                <div class="ai-wbr-memory-history-import">
-                    <div class="ai-wbr-memory-subtitle">
-                        <b>历史聊天补录</b>
-                        <small>把已经存在的旧楼层按范围整理进当前记忆。</small>
+                <details class="ai-wbr-memory-fold" open>
+                    <summary>
+                        <span>核心开关</span>
+                        <small>启用记忆、实时整理、归纳和路由参与。</small>
+                    </summary>
+                    <div class="ai-wbr-memory-fold-body">
+                        <label class="checkbox_label" for="ai_wbr_memory_enabled">
+                            <input id="ai_wbr_memory_enabled" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="启用后把聊天中长期有价值的信息写入当前聊天/角色对应的记忆容器。"></span>
+                            <span>启用记忆存储</span>
+                        </label>
+                        <label class="checkbox_label" for="ai_wbr_memory_realtime_enabled">
+                            <input id="ai_wbr_memory_realtime_enabled" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后每轮回复结束都会读取最近几条楼层，实时补充刚发生的事实、状态和关系。"></span>
+                            <span>启用实时整理（每轮更新）</span>
+                        </label>
+                        <label class="checkbox_label" for="ai_wbr_memory_summary_enabled">
+                            <input id="ai_wbr_memory_summary_enabled" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后按间隔读取更长一段上下文，用于压缩、归纳和修正长期记忆。"></span>
+                            <span>启用间隔归纳</span>
+                        </label>
+                        <label class="checkbox_label" for="ai_wbr_memory_inject_to_router">
+                            <input id="ai_wbr_memory_inject_to_router" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="把当前记忆状态摘要加入前置世界书路由输入，帮助下一轮更稳定命中相关条目。"></span>
+                            <span>记忆状态参与世界书路由</span>
+                        </label>
+                        <label class="checkbox_label" for="ai_wbr_memory_review_required">
+                            <input id="ai_wbr_memory_review_required" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后，AI 自动整理出的记忆更新会先进入待确认队列；你确认后才会写入长期记忆图谱。"></span>
+                            <span>记忆更新需要确认</span>
+                        </label>
                     </div>
+                </details>
+
+                <details class="ai-wbr-memory-fold">
+                    <summary>
+                        <span>整理参数</span>
+                        <small>控制实时、间隔归纳和图谱容量。</small>
+                    </summary>
+                    <div class="ai-wbr-memory-fold-body ai-wbr-grid">
+                        <label for="ai_wbr_memory_realtime_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="实时整理读取最近多少条聊天消息。建议 3-6 条，用于每轮快速更新，不承担长期压缩。"></span>实时整理读取消息数</label>
+                        <input id="ai_wbr_memory_realtime_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
+
+                        <label for="ai_wbr_memory_summary_interval_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="间隔归纳每隔多少条聊天消息触发一次。填 20 表示每 20 条聊天楼层进行一次长期归纳。"></span>间隔归纳消息数</label>
+                        <input id="ai_wbr_memory_summary_interval_messages" class="text_pole" type="number" min="1" max="100" step="1" />
+
+                        <label for="ai_wbr_memory_summary_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="间隔归纳读取最近多少条聊天消息。建议比实时整理更大，用于压缩阶段性剧情和关系变化。"></span>间隔归纳读取消息数</label>
+                        <input id="ai_wbr_memory_summary_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
+
+                        <label for="ai_wbr_memory_max_nodes"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少个节点，超出后优先保留重要度较高、最近更新的节点。"></span>最大记忆节点数</label>
+                        <input id="ai_wbr_memory_max_nodes" class="text_pole" type="number" min="5" max="200" step="1" />
+
+                        <label for="ai_wbr_memory_max_links"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少条关系边。"></span>最大记忆关系数</label>
+                        <input id="ai_wbr_memory_max_links" class="text_pole" type="number" min="0" max="400" step="1" />
+
+                        <label for="ai_wbr_memory_request_max_tokens"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理请求实际发送给模型的 max_tokens 上限。普通整理和重试都使用这个值。"></span>后置请求 tokens 上限</label>
+                        <input id="ai_wbr_memory_request_max_tokens" class="text_pole" type="number" min="32" max="100000" step="16" />
+
+                        <label for="ai_wbr_memory_retries"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理失败、空回或解析失败时，额外自动重试几次。"></span>后置记忆重试次数</label>
+                        <input id="ai_wbr_memory_retries" class="text_pole" type="number" min="0" max="10" step="1" />
+                    </div>
+                </details>
+
+                <details class="ai-wbr-memory-fold" open>
+                    <summary>
+                        <span>立即整理</span>
+                        <small>手动运行整理、确认队列、保存或清空。</small>
+                    </summary>
+                    <div class="ai-wbr-memory-fold-body ai-wbr-actions">
+                        <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即实时整理</button>
+                        <button id="ai_wbr_memory_summary_now" class="menu_button" type="button">立即归纳整理</button>
+                        <button id="ai_wbr_memory_accept_all" class="menu_button" type="button">确认全部更新</button>
+                        <button id="ai_wbr_memory_reject_all" class="menu_button" type="button">清空待确认</button>
+                        <button id="ai_wbr_memory_save_json" class="menu_button" type="button">保存 JSON</button>
+                        <button id="ai_wbr_memory_clear" class="menu_button" type="button">清空记忆</button>
+                        <span id="ai_wbr_memory_status" class="ai-wbr-status">未启用</span>
+                    </div>
+                </details>
+
+                <details class="ai-wbr-memory-fold" open>
+                    <summary>
+                        <span>历史聊天补录</span>
+                        <small>把已经存在的旧楼层按范围整理进当前记忆。</small>
+                    </summary>
+                    <div class="ai-wbr-memory-fold-body ai-wbr-memory-history-import">
                     <div class="ai-wbr-memory-history-grid">
                         <label for="ai_wbr_memory_history_start_floor">起始楼层</label>
                         <input id="ai_wbr_memory_history_start_floor" class="text_pole" type="number" min="1" step="1" placeholder="1" />
@@ -229,16 +240,62 @@
                     </div>
                     <div id="ai_wbr_memory_history_status" class="ai-wbr-memory-history-status">尚未选择楼层范围。</div>
                     <div id="ai_wbr_memory_history_preview_box" class="ai-wbr-memory-history-preview"></div>
-                </div>
+                    </div>
+                </details>
 
-                <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
-                <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue"></div>
-                <div id="ai_wbr_memory_state_editor" class="ai-wbr-memory-state-editor"></div>
-                <div class="ai-wbr-router-raw-block">
-                    <div><b>记忆图谱 JSON</b></div>
-                    <textarea id="ai_wbr_memory_json" class="text_pole ai-wbr-memory-json" rows="9"></textarea>
-                </div>
-                <div id="ai_wbr_memory_debug_panel" class="ai-wbr-memory-debug-panel">
+                <details class="ai-wbr-memory-fold" open>
+                    <summary>
+                        <span>记忆概览</span>
+                        <small>节点、关系、待确认数量和当前主题。</small>
+                    </summary>
+                    <div class="ai-wbr-memory-fold-body">
+                        <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
+                    </div>
+                </details>
+
+                <details class="ai-wbr-memory-fold ai-wbr-memory-review-fold">
+                    <summary>
+                        <span>待确认更新</span>
+                        <small id="ai_wbr_memory_review_badge">暂无待确认。</small>
+                    </summary>
+                    <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue ai-wbr-memory-fold-body"></div>
+                </details>
+
+                <details class="ai-wbr-memory-fold">
+                    <summary>
+                        <span>状态字段</span>
+                        <small>编辑当前位置、目标、阶段和自定义状态。</small>
+                    </summary>
+                    <div id="ai_wbr_memory_state_editor" class="ai-wbr-memory-state-editor ai-wbr-memory-fold-body"></div>
+                </details>
+
+                <details class="ai-wbr-memory-fold">
+                    <summary>
+                        <span>高级 JSON</span>
+                        <small>直接查看或手动保存记忆图谱 JSON。</small>
+                    </summary>
+                    <div class="ai-wbr-router-raw-block ai-wbr-memory-fold-body">
+                        <div><b>记忆图谱 JSON</b></div>
+                        <textarea id="ai_wbr_memory_json" class="text_pole ai-wbr-memory-json" rows="9"></textarea>
+                    </div>
+                </details>
+
+                <details class="ai-wbr-memory-fold ai-wbr-memory-debug-fold">
+                    <summary>
+                        <span>调试信息</span>
+                        <small>查看后置记忆 Prompt、原始返回和解析错误。</small>
+                    </summary>
+                    <div id="ai_wbr_memory_debug_panel" class="ai-wbr-memory-debug-panel ai-wbr-memory-fold-body">
+                        <label class="checkbox_label" for="ai_wbr_memory_debug">
+                            <input id="ai_wbr_memory_debug" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="显示后置记忆整理发给 AI 的 Prompt、AI 原始返回和解析错误，方便排查。"></span>
+                            <span>记忆调试模式</span>
+                        </label>
+                        <label class="checkbox_label" for="ai_wbr_memory_scope_debug">
+                            <input id="ai_wbr_memory_scope_debug" type="checkbox" />
+                            <span class="fa-solid fa-circle-info ai-wbr-help" title="在浏览器控制台输出切卡/切聊天、读取记忆、保存记忆和面板重绘的详细日志。"></span>
+                            <span>记忆作用域控制台调试</span>
+                        </label>
                     <div class="ai-wbr-router-raw-block">
                         <div><b>后置记忆 Prompt</b></div>
                         <pre id="ai_wbr_memory_prompt" class="ai-wbr-router-raw">尚无后置记忆 Prompt</pre>
@@ -251,7 +308,8 @@
                         <div><b>后置记忆解析错误</b></div>
                         <pre id="ai_wbr_memory_error" class="ai-wbr-router-raw">尚无错误</pre>
                     </div>
-                </div>
+                    </div>
+                </details>
             </div>
 
             <div class="ai-wbr-section ai-wbr-graph-section ai-wbr-graph-workspace" id="ai_wbr_memory_graph_section">
