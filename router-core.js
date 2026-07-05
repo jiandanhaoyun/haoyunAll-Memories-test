@@ -141,6 +141,8 @@ const defaultSettings = {
     bookshelfMaxChunks: 3,
     bookshelfMaxChunkChars: 500,
     bookshelfMinScore: 0.35,
+    bookshelfMemoryVectorRecall: true,
+    bookshelfMemoryVectorMaxItems: 4,
     bookshelfEmbeddingMode: 'api',
     bookshelfApiUrl: '',
     bookshelfApiKey: '',
@@ -212,7 +214,7 @@ let bookshelfLastStatus = '';
 let bookshelfLocalPipelinePromise = null;
 let bookshelfVectorAbortRequested = false;
 const BOOKSHELF_DB_NAME = 'AIWBR_VectorBookshelf';
-const BOOKSHELF_DB_VERSION = 1;
+const BOOKSHELF_DB_VERSION = 2;
 const BOOKSHELF_MAX_IMPORT_CHUNKS = 2000;
 const BOOKSHELF_LOCAL_TRANSFORMERS_CDN = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 let lastKnownChatFileName = '';
@@ -1708,6 +1710,12 @@ function getBookshelfDb() {
                 chunks.createIndex('bookId', 'bookId');
                 chunks.createIndex('updatedAt', 'updatedAt');
             }
+            if (!db.objectStoreNames.contains('memoryVectors')) {
+                const memoryVectors = db.createObjectStore('memoryVectors', { keyPath: 'id' });
+                memoryVectors.createIndex('chatKey', 'chatKey');
+                memoryVectors.createIndex('nodeId', 'nodeId');
+                memoryVectors.createIndex('updatedAt', 'updatedAt');
+            }
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
@@ -1780,6 +1788,25 @@ async function bookshelfDeleteBook(bookId) {
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => reject(tx.error || new Error('IndexedDB delete book failed'));
         tx.onabort = () => reject(tx.error || new Error('IndexedDB delete book aborted'));
+    });
+}
+
+async function bookshelfDeleteMemoryVectorsForChat(chatKey) {
+    const db = await getBookshelfDb();
+    const tx = db.transaction('memoryVectors', 'readwrite');
+    const store = tx.objectStore('memoryVectors');
+    const index = store.index('chatKey');
+    const cursorRequest = index.openCursor(IDBKeyRange.only(chatKey));
+    cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        cursor.delete();
+        cursor.continue();
+    };
+    return await new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error('IndexedDB delete memory vectors failed'));
+        tx.onabort = () => reject(tx.error || new Error('IndexedDB delete memory vectors aborted'));
     });
 }
 
@@ -2080,6 +2107,36 @@ function buildBookshelfRecallQuery(recentMessages = [], mvuSummary = '') {
     return parts.join('\n').trim();
 }
 
+function mergeMemoryVectorCandidates(keywordCandidates = [], vectorCandidates = []) {
+    const merged = new Map();
+    for (const item of [...keywordCandidates, ...vectorCandidates]) {
+        const key = String(item?.uid || item?.routerId || item?.comment || '');
+        if (!key) continue;
+        const previous = merged.get(key);
+        if (!previous || Number(item.score || 0) > Number(previous.score || 0)) {
+            merged.set(key, item);
+        }
+    }
+    return [...merged.values()]
+        .sort((a, b) => (Number(b.score || 0) - Number(a.score || 0)) || String(b.nodeRef?.updatedAt || '').localeCompare(String(a.nodeRef?.updatedAt || '')));
+}
+
+function mergeSelectedMemoryVectors(selectedMemories = [], selectedVectors = []) {
+    const maxVectorItems = clampNumber(settings.bookshelfMemoryVectorMaxItems, defaultSettings.bookshelfMemoryVectorMaxItems, 1, 12);
+    const merged = [...selectedMemories];
+    const seen = new Set(merged.map(item => String(item?.uid || item?.routerId || '')));
+    for (const item of selectedVectors.slice(0, maxVectorItems)) {
+        const key = String(item?.uid || item?.routerId || '');
+        if (!key || seen.has(key)) continue;
+        merged.push({
+            ...item,
+            reason: item.reason || `向量召回命中，分数 ${Number(item.score || 0).toFixed(2)}`,
+        });
+        seen.add(key);
+    }
+    return merged;
+}
+
 async function recallBookshelfChunks(query, context = getContext(), options = {}) {
     const force = !!options.force;
     if (!force && (!settings.bookshelfEnabled || !settings.bookshelfAutoInject)) {
@@ -2127,6 +2184,211 @@ async function recallBookshelfChunks(query, context = getContext(), options = {}
     return {
         candidates,
         selected: candidates.slice(0, maxChunks),
+    };
+}
+
+function buildMemoryVectorText(node, graph = getMemoryGraph()) {
+    const parts = [];
+    const push = (label, value) => {
+        const text = String(value || '').trim();
+        if (text) parts.push(`${label}：${text}`);
+    };
+    push('标题', node?.title);
+    push('类型', node?.type);
+    push('摘要', node?.summary);
+    push('内容', node?.content);
+    push('地点', node?.location);
+    push('时间', node?.timeSpan);
+    if (Array.isArray(node?.tags) && node.tags.length) push('标签', node.tags.join('、'));
+    if (Array.isArray(node?.keys) && node.keys.length) push('关键词', node.keys.join('、'));
+    if (graph?.lastSummary) push('近期摘要', truncateText(graph.lastSummary, 360));
+    return parts.join('\n').trim();
+}
+
+function buildMemoryVectorRecord(node, graph = getMemoryGraph(), context = getContext(), provider = getBookshelfEmbeddingProviderMeta()) {
+    const chatKey = getCurrentChatMemoryKey(context);
+    const text = buildMemoryVectorText(node, graph);
+    const textHash = hashString(text);
+    return {
+        id: `memory:${chatKey}:${node.id}`,
+        chatKey,
+        nodeId: String(node.id || ''),
+        title: String(node.title || node.id || '记忆节点'),
+        memoryType: String(node.type || 'event'),
+        text,
+        textHash,
+        vector: [],
+        vectorStatus: text ? 'pending' : 'empty',
+        embeddingMode: provider.mode,
+        embeddingModel: provider.model,
+        embeddingDim: 0,
+        updatedAt: new Date().toISOString(),
+    };
+}
+
+async function syncMemoryGraphVectors(graph = getMemoryGraph(), context = getContext(), options = {}) {
+    if (!settings.bookshelfMemoryVectorRecall && !options.force) {
+        return { total: 0, ready: 0, pending: 0, failed: 0, skipped: true };
+    }
+    const provider = getBookshelfEmbeddingProviderMeta();
+    if (!provider.model) {
+        throw new Error(provider.mode === 'api' ? '请先填写 API 向量模型名。' : '请先填写浏览器本地模型 ID。');
+    }
+    const chatKey = getCurrentChatMemoryKey(context);
+    const nodes = (Array.isArray(graph?.nodes) ? graph.nodes : [])
+        .filter(node => node?.id && buildMemoryVectorText(node, graph));
+    const existing = await bookshelfGetAll('memoryVectors').catch(() => []);
+    const existingById = new Map((existing || [])
+        .filter(item => item.chatKey === chatKey)
+        .map(item => [item.id, item]));
+    const liveIds = new Set(nodes.map(node => `memory:${chatKey}:${node.id}`));
+    const staleIds = (existing || [])
+        .filter(item => item.chatKey === chatKey && !liveIds.has(item.id))
+        .map(item => item.id);
+
+    for (const id of staleIds) {
+        await bookshelfDelete('memoryVectors', id);
+    }
+
+    let ready = 0;
+    let pending = 0;
+    let failed = 0;
+    const records = [];
+    for (const node of nodes) {
+        const base = buildMemoryVectorRecord(node, graph, context, provider);
+        const previous = existingById.get(base.id);
+        if (
+            previous
+            && previous.textHash === base.textHash
+            && previous.embeddingMode === provider.mode
+            && previous.embeddingModel === provider.model
+            && previous.vectorStatus === 'ready'
+            && Array.isArray(previous.vector)
+            && previous.vector.length
+            && !options.force
+        ) {
+            ready += 1;
+            continue;
+        }
+        try {
+            const vector = await embedBookshelfText(base.text);
+            records.push({
+                ...base,
+                vector,
+                vectorStatus: 'ready',
+                embeddingDim: vector.length,
+                error: '',
+            });
+            ready += 1;
+        } catch (error) {
+            records.push({
+                ...base,
+                vector: [],
+                vectorStatus: 'failed',
+                error: error?.message || String(error),
+            });
+            failed += 1;
+        }
+        pending += 1;
+        if (records.length >= 6) {
+            await bookshelfPutMany('memoryVectors', records.splice(0, records.length));
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+    if (records.length) {
+        await bookshelfPutMany('memoryVectors', records);
+    }
+    return { total: nodes.length, ready, pending, failed, skipped: false };
+}
+
+async function recallMemoryVectorChunks(query, memoryGraph = getMemoryGraph(), context = getContext(), options = {}) {
+    const force = !!options.force;
+    if (!force && (!settings.bookshelfEnabled || !settings.bookshelfAutoInject || !settings.bookshelfMemoryVectorRecall)) {
+        return { candidates: [], selected: [], sync: null };
+    }
+    const queryText = String(query || '').trim();
+    if (!queryText) return { candidates: [], selected: [], sync: null };
+
+    const sync = await syncMemoryGraphVectors(memoryGraph, context, { force: !!options.forceRebuild });
+    const chatKey = getCurrentChatMemoryKey(context);
+    const [records, queryVector] = await Promise.all([
+        bookshelfGetAll('memoryVectors'),
+        embedBookshelfText(queryText),
+    ]);
+    const queryTerms = tokenizeBookshelfText(queryText).slice(0, 40);
+    const minScore = clampNumber(settings.bookshelfMinScore, defaultSettings.bookshelfMinScore, 0, 1);
+    const maxItems = clampNumber(settings.bookshelfMemoryVectorMaxItems, defaultSettings.bookshelfMemoryVectorMaxItems, 1, 12);
+    const nodeById = new Map((Array.isArray(memoryGraph?.nodes) ? memoryGraph.nodes : []).map(node => [String(node.id), node]));
+    const candidates = (records || [])
+        .filter(item => item.chatKey === chatKey && item.vectorStatus === 'ready' && Array.isArray(item.vector) && item.vector.length)
+        .map(item => {
+            const semanticScore = Math.max(0, cosineSimilarity(queryVector, item.vector));
+            const keywordScore = calcBookshelfKeywordScore(item.text, queryTerms);
+            const node = nodeById.get(String(item.nodeId)) || {};
+            const score = Math.min(1, (semanticScore * 0.82) + (keywordScore * 0.18));
+            return {
+                routerId: `memory-vector:${item.nodeId}`,
+                uid: String(item.nodeId || item.id),
+                source: 'memory-vector',
+                world: 'memory-vector',
+                comment: item.title || node.title || '图谱记忆',
+                content: node.content || node.summary || item.text,
+                keys: {
+                    primary: uniqueStrings([item.title, node.title].filter(Boolean)),
+                    secondary: uniqueStrings([
+                        item.memoryType,
+                        node.type,
+                        ...(Array.isArray(node.tags) ? node.tags : []),
+                        ...(Array.isArray(node.keys) ? node.keys : []),
+                    ].filter(Boolean)),
+                    all: uniqueStrings([
+                        item.title,
+                        node.title,
+                        item.memoryType,
+                        node.type,
+                        ...(Array.isArray(node.tags) ? node.tags : []),
+                        ...(Array.isArray(node.keys) ? node.keys : []),
+                    ].filter(Boolean)),
+                },
+                matchedKeys: [],
+                score,
+                semanticScore,
+                keywordScore,
+                memoryType: item.memoryType || node.type || 'event',
+                nodeRef: node,
+                vectorRecord: item,
+                reason: `向量召回：语义 ${semanticScore.toFixed(2)}，关键词 ${keywordScore.toFixed(2)}`,
+            };
+        })
+        .filter(item => item.score >= minScore)
+        .sort((a, b) => b.score - a.score);
+
+    return {
+        candidates,
+        selected: candidates.slice(0, maxItems),
+        sync,
+    };
+}
+
+async function recallVectorMemoryAndBookshelf(query, memoryGraph = getMemoryGraph(), context = getContext(), options = {}) {
+    const [memoryResult, bookshelfResult] = await Promise.all([
+        recallMemoryVectorChunks(query, memoryGraph, context, options).catch(error => ({ candidates: [], selected: [], error })),
+        recallBookshelfChunks(query, context, options).catch(error => ({ candidates: [], selected: [], error })),
+    ]);
+    if (memoryResult.error) {
+        console.warn(`${LOG_PREFIX} Memory vector recall skipped.`, memoryResult.error);
+    }
+    if (bookshelfResult.error) {
+        console.warn(`${LOG_PREFIX} Bookshelf recall skipped.`, bookshelfResult.error);
+        setBookshelfStatus(`向量召回跳过：${bookshelfResult.error?.message || bookshelfResult.error}`);
+    }
+    return {
+        memoryCandidates: memoryResult.candidates || [],
+        selectedMemoryVectors: memoryResult.selected || [],
+        bookshelfCandidates: bookshelfResult.candidates || [],
+        selectedBookshelf: bookshelfResult.selected || [],
+        errors: [memoryResult.error, bookshelfResult.error].filter(Boolean),
+        sync: memoryResult.sync || null,
     };
 }
 
@@ -5297,15 +5559,125 @@ function getStandaloneTabId() {
     return String($('#ai_wbr_console_tabs .ai-wbr-console-tab.active').data('tab') || 'overview');
 }
 
+function createBookshelfStandaloneFold() {
+    return $(`
+        <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold" open>
+            <summary>
+                <span>书架向量库</span>
+                <small>导入 TXT 后需手动调用 API 或浏览器本地模型向量化；图谱记忆可同步建立向量索引。</small>
+            </summary>
+            <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
+                <div class="ai-wbr-bookshelf-switches">
+                    <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
+                    <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />发送前自动注入</label>
+                    <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />图谱记忆参与向量召回</label>
+                    <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />仅召回绑定书籍</label>
+                    <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />允许全局书籍</label>
+                </div>
+                <div class="ai-wbr-bookshelf-import">
+                    <input id="ai_wbr_bookshelf_file" type="file" accept=".txt,text/plain" multiple hidden />
+                    <select id="ai_wbr_bookshelf_import_type" class="text_pole">
+                        <option value="plot">剧情记录</option>
+                        <option value="character">人物档案</option>
+                        <option value="world">世界观</option>
+                        <option value="rule">规则设定</option>
+                        <option value="other">其他资料</option>
+                    </select>
+                    <select id="ai_wbr_bookshelf_import_binding" class="text_pole">
+                        <option value="character">绑定当前角色</option>
+                        <option value="chat">绑定当前聊天</option>
+                        <option value="global">全局补充</option>
+                        <option value="none">暂不绑定</option>
+                    </select>
+                    <button id="ai_wbr_bookshelf_import" class="menu_button" type="button">导入 TXT</button>
+                </div>
+                <div class="ai-wbr-grid ai-wbr-bookshelf-config">
+                    <label for="ai_wbr_bookshelf_embedding_mode">Embedding 模式</label>
+                    <select id="ai_wbr_bookshelf_embedding_mode" class="text_pole">
+                        <option value="api">API 向量模型</option>
+                        <option value="browser-local">浏览器本地模型</option>
+                    </select>
+                    <label for="ai_wbr_bookshelf_api_url">API 地址</label>
+                    <input id="ai_wbr_bookshelf_api_url" class="text_pole" type="text" placeholder="https://example.com/v1 或 /v1/embeddings" />
+                    <label for="ai_wbr_bookshelf_api_key">API Key</label>
+                    <input id="ai_wbr_bookshelf_api_key" class="text_pole" type="password" placeholder="sk-..." />
+                    <label for="ai_wbr_bookshelf_api_model">API 模型名</label>
+                    <input id="ai_wbr_bookshelf_api_model" class="text_pole" type="text" placeholder="text-embedding-3-small" />
+                    <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
+                    <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
+                    <label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>
+                    <input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />
+                    <label for="ai_wbr_bookshelf_max_chunks">TXT 召回数量</label>
+                    <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
+                    <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
+                    <input id="ai_wbr_bookshelf_max_chars" class="text_pole" type="number" min="120" max="2000" step="20" />
+                    <label for="ai_wbr_bookshelf_min_score">最低相似度</label>
+                    <input id="ai_wbr_bookshelf_min_score" class="text_pole" type="number" min="0" max="1" step="0.05" />
+                </div>
+                <div class="ai-wbr-bookshelf-actions">
+                    <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
+                    <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
+                    <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
+                    <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
+                    <span id="ai_wbr_bookshelf_model_status" class="ai-wbr-status">未测试</span>
+                </div>
+                <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。导入 TXT 后会进入待向量化，需要点击“开始向量化”。</div>
+                <div class="ai-wbr-bookshelf-layout">
+                    <section><h4>当前作用域</h4><div id="ai_wbr_bookshelf_scope" class="ai-wbr-bookshelf-scope"></div></section>
+                    <section><h4>书籍</h4><div id="ai_wbr_bookshelf_books" class="ai-wbr-bookshelf-books"></div></section>
+                    <section><h4>详情</h4><div id="ai_wbr_bookshelf_detail" class="ai-wbr-bookshelf-detail"></div></section>
+                </div>
+                <div class="ai-wbr-bookshelf-test">
+                    <h4>统一召回测试</h4>
+                    <textarea id="ai_wbr_bookshelf_test_query" class="text_pole" rows="3" placeholder="输入一句当前剧情问题，测试图谱记忆和绑定 TXT 会召回哪些片段。"></textarea>
+                    <div class="ai-wbr-bookshelf-actions">
+                        <button id="ai_wbr_bookshelf_test" class="menu_button" type="button">测试召回</button>
+                    </div>
+                    <div id="ai_wbr_bookshelf_results" class="ai-wbr-bookshelf-results"></div>
+                </div>
+            </div>
+        </details>
+    `);
+}
+
+function ensureBookshelfStandaloneControls(section) {
+    const panel = section.find('#ai_wbr_bookshelf_panel');
+    if (!panel.length) return;
+    const switches = panel.find('.ai-wbr-bookshelf-switches').first();
+    if (switches.length && !panel.find('#ai_wbr_bookshelf_memory_vector').length) {
+        switches.find('#ai_wbr_bookshelf_auto_inject').closest('label').after(
+            $('<label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"></label>')
+                .append('<input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />')
+                .append('图谱记忆参与向量召回'),
+        );
+    }
+    const config = panel.find('.ai-wbr-bookshelf-config').first();
+    if (config.length && !panel.find('#ai_wbr_bookshelf_memory_vector_max').length) {
+        config.find('#ai_wbr_bookshelf_max_chunks').prev('label').before('<label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>');
+        config.find('#ai_wbr_bookshelf_max_chunks').before('<input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />');
+    }
+    const actions = panel.find('.ai-wbr-bookshelf-actions').first();
+    if (actions.length && !panel.find('#ai_wbr_bookshelf_vectorize_memory').length) {
+        actions.find('#ai_wbr_bookshelf_load_local').after('<button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>');
+    }
+    if (actions.length && !panel.find('#ai_wbr_bookshelf_reset_memory_vectors').length) {
+        actions.find('#ai_wbr_bookshelf_vectorize_memory').after('<button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>');
+    }
+}
+
 function ensureBookshelfStandaloneSection() {
     let section = $('#ai_wbr_bookshelf_section');
     if (!section.length) {
         section = $('<div class="ai-wbr-section" id="ai_wbr_bookshelf_section"></div>');
     }
     const fold = $('.ai-wbr-bookshelf-fold');
-    if (fold.length && !section.find('.ai-wbr-bookshelf-fold').length) {
+    if (fold.length && !section.find('#ai_wbr_bookshelf_panel').length) {
         section.append(fold.detach());
     }
+    if (!section.find('#ai_wbr_bookshelf_panel').length) {
+        section.empty().append(createBookshelfStandaloneFold());
+    }
+    ensureBookshelfStandaloneControls(section);
     return section;
 }
 
@@ -5874,10 +6246,14 @@ function renderBookshelfResults(container, results = []) {
         return;
     }
     for (const item of results) {
+        const isMemoryVector = item.source === 'memory-vector';
+        const title = isMemoryVector
+            ? `图谱记忆 / ${item.comment || item.title || item.uid || '记忆节点'}`
+            : `《${item.book?.title || item.book?.fileName || '书架'}》 / ${item.title || `片段 ${item.order || ''}`}`;
         container.append(
             $('<div class="ai-wbr-bookshelf-result"></div>')
                 .append($('<div class="ai-wbr-bookshelf-result-head"></div>')
-                    .append($('<b></b>').text(`《${item.book?.title || item.book?.fileName || '书架'}》 / ${item.title || `片段 ${item.order || ''}`}`))
+                    .append($('<b></b>').text(title))
                     .append($('<span></span>').text(`分数 ${Number(item.score || 0).toFixed(2)}`)))
                 .append($('<small></small>').text(`语义 ${Number(item.semanticScore || 0).toFixed(2)} · 关键词 ${Number(item.keywordScore || 0).toFixed(2)}`))
                 .append($('<p></p>').text(truncateText(item.text || item.content || '', 420))),
@@ -5886,17 +6262,35 @@ function renderBookshelfResults(container, results = []) {
 }
 
 async function renderBookshelfPanel() {
+    if (!$('#ai_wbr_bookshelf_panel').length) {
+        ensureBookshelfStandaloneSection();
+    }
     const panel = $('#ai_wbr_bookshelf_panel');
     if (!panel.length) return;
 
     const scope = getBookshelfScope();
+    $('#ai_wbr_bookshelf_enabled').prop('checked', !!settings.bookshelfEnabled);
+    $('#ai_wbr_bookshelf_auto_inject').prop('checked', !!settings.bookshelfAutoInject);
+    $('#ai_wbr_bookshelf_memory_vector').prop('checked', !!settings.bookshelfMemoryVectorRecall);
+    $('#ai_wbr_bookshelf_only_bound').prop('checked', !!settings.bookshelfOnlyBound);
+    $('#ai_wbr_bookshelf_allow_global').prop('checked', !!settings.bookshelfAllowGlobal);
+    $('#ai_wbr_bookshelf_memory_vector_max').val(settings.bookshelfMemoryVectorMaxItems);
+    $('#ai_wbr_bookshelf_max_chunks').val(settings.bookshelfMaxChunks);
+    $('#ai_wbr_bookshelf_max_chars').val(settings.bookshelfMaxChunkChars);
+    $('#ai_wbr_bookshelf_min_score').val(settings.bookshelfMinScore);
+    $('#ai_wbr_bookshelf_api_url').val(settings.bookshelfApiUrl || '');
+    $('#ai_wbr_bookshelf_api_key').val(settings.bookshelfApiKey || '');
+    $('#ai_wbr_bookshelf_api_model').val(settings.bookshelfApiModel || '');
+    $('#ai_wbr_bookshelf_local_model').val(settings.bookshelfLocalModelId || defaultSettings.bookshelfLocalModelId);
+    $('#ai_wbr_bookshelf_embedding_mode').val(getBookshelfEmbeddingMode());
     $('#ai_wbr_bookshelf_test_query').val(settings.bookshelfLastTestQuery || '');
     setBookshelfStatus(bookshelfLastStatus);
 
     $('#ai_wbr_bookshelf_scope').empty().append(
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前角色卡'), $('<span></span>').text(scope.characterName || '当前角色')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前聊天'), $('<span></span>').text(scope.chatName || '当前聊天')),
-        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('自动补充'), $('<span></span>').text(settings.bookshelfEnabled && settings.bookshelfAutoInject ? '已开启' : '关闭')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('自动注入'), $('<span></span>').text(settings.bookshelfEnabled && settings.bookshelfAutoInject ? '已开启' : '关闭')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('图谱向量'), $('<span></span>').text(settings.bookshelfMemoryVectorRecall ? `开启 · 最多 ${settings.bookshelfMemoryVectorMaxItems || defaultSettings.bookshelfMemoryVectorMaxItems} 条` : '关闭')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('向量模型'), $('<span></span>').text(getBookshelfEmbeddingProviderMeta().label)),
     );
 
@@ -6974,6 +7368,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_history_skip_done', 'memoryHistorySkipDone');
     bindCheckbox('#ai_wbr_bookshelf_enabled', 'bookshelfEnabled');
     bindCheckbox('#ai_wbr_bookshelf_auto_inject', 'bookshelfAutoInject');
+    bindCheckbox('#ai_wbr_bookshelf_memory_vector', 'bookshelfMemoryVectorRecall');
     bindCheckbox('#ai_wbr_bookshelf_only_bound', 'bookshelfOnlyBound');
     bindCheckbox('#ai_wbr_bookshelf_allow_global', 'bookshelfAllowGlobal');
     bindNumber('#ai_wbr_memory_auto_run_interval', 'memorySummaryIntervalMessages', 1, 100);
@@ -6984,6 +7379,7 @@ function bindMemoryPanelActions() {
     bindNumber('#ai_wbr_memory_retries', 'memoryRetries', 0, 10);
     bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
     bindNumber('#ai_wbr_memory_max_links', 'memoryMaxLinks', 0, 400);
+    bindNumber('#ai_wbr_bookshelf_memory_vector_max', 'bookshelfMemoryVectorMaxItems', 1, 12);
     bindNumber('#ai_wbr_bookshelf_max_chunks', 'bookshelfMaxChunks', 1, 12);
     bindNumber('#ai_wbr_bookshelf_max_chars', 'bookshelfMaxChunkChars', 120, 2000);
     bindNumber('#ai_wbr_bookshelf_min_score', 'bookshelfMinScore', 0, 1);
@@ -7001,11 +7397,12 @@ function bindMemoryPanelActions() {
             renderBookshelfPanel();
         });
 
-    $('#ai_wbr_bookshelf_enabled, #ai_wbr_bookshelf_auto_inject, #ai_wbr_bookshelf_only_bound, #ai_wbr_bookshelf_allow_global, #ai_wbr_bookshelf_max_chunks, #ai_wbr_bookshelf_max_chars, #ai_wbr_bookshelf_min_score, #ai_wbr_bookshelf_api_url, #ai_wbr_bookshelf_api_key, #ai_wbr_bookshelf_api_model, #ai_wbr_bookshelf_local_model')
+    $('#ai_wbr_bookshelf_enabled, #ai_wbr_bookshelf_auto_inject, #ai_wbr_bookshelf_memory_vector, #ai_wbr_bookshelf_only_bound, #ai_wbr_bookshelf_allow_global, #ai_wbr_bookshelf_memory_vector_max, #ai_wbr_bookshelf_max_chunks, #ai_wbr_bookshelf_max_chars, #ai_wbr_bookshelf_min_score, #ai_wbr_bookshelf_api_url, #ai_wbr_bookshelf_api_key, #ai_wbr_bookshelf_api_model, #ai_wbr_bookshelf_local_model')
         .on('input change', () => {
             syncBookshelfProviderVisibility();
             renderBookshelfPanel();
         });
+    bindBookshelfDynamicSettingsActions();
     syncBookshelfProviderVisibility();
 
     $('#ai_wbr_memory_history_mode')
@@ -7127,7 +7524,7 @@ function bindMemoryPanelActions() {
         }
     });
 
-    $('#ai_wbr_bookshelf_test').on('click', async (event) => {
+    $(document).off('click.aiWbrBookshelfTest', '#ai_wbr_bookshelf_test').on('click.aiWbrBookshelfTest', '#ai_wbr_bookshelf_test', async (event) => {
         event.preventDefault();
         const query = String($('#ai_wbr_bookshelf_test_query').val() || '').trim();
         saveSetting('bookshelfLastTestQuery', query);
@@ -7136,10 +7533,19 @@ function bindMemoryPanelActions() {
             return;
         }
         try {
-            setBookshelfStatus('正在测试书架召回...');
-            const result = await recallBookshelfChunks(query, getContext(), { force: true });
-            bookshelfLastTestResults = result.selected || [];
-            setBookshelfStatus(`测试完成：候选 ${result.candidates.length} 条，命中 ${result.selected.length} 条。`);
+            setBookshelfStatus('正在测试统一向量召回...');
+            const context = getContext();
+            const memoryGraph = getMemoryGraph(context);
+            const result = await recallVectorMemoryAndBookshelf(query, memoryGraph, context, { force: true });
+            bookshelfLastTestResults = [
+                ...(result.selectedMemoryVectors || []),
+                ...(result.selectedBookshelf || []),
+            ];
+            const graphHits = result.selectedMemoryVectors?.length || 0;
+            const txtHits = result.selectedBookshelf?.length || 0;
+            const graphCandidates = result.memoryCandidates?.length || 0;
+            const txtCandidates = result.bookshelfCandidates?.length || 0;
+            setBookshelfStatus(`测试完成：图谱候选 ${graphCandidates} 条，命中 ${graphHits} 条；TXT 候选 ${txtCandidates} 条，命中 ${txtHits} 条。`);
             renderBookshelfPanel();
         } catch (error) {
             bookshelfLastTestResults = [];
@@ -7148,7 +7554,7 @@ function bindMemoryPanelActions() {
         }
     });
 
-    $('#ai_wbr_bookshelf_test_provider').on('click', async (event) => {
+    $(document).off('click.aiWbrBookshelfProvider', '#ai_wbr_bookshelf_test_provider').on('click.aiWbrBookshelfProvider', '#ai_wbr_bookshelf_test_provider', async (event) => {
         event.preventDefault();
         try {
             setBookshelfModelStatus('正在测试...');
@@ -7161,7 +7567,7 @@ function bindMemoryPanelActions() {
         }
     });
 
-    $('#ai_wbr_bookshelf_load_local').on('click', async (event) => {
+    $(document).off('click.aiWbrBookshelfLocal', '#ai_wbr_bookshelf_load_local').on('click.aiWbrBookshelfLocal', '#ai_wbr_bookshelf_load_local', async (event) => {
         event.preventDefault();
         try {
             saveSetting('bookshelfEmbeddingMode', 'browser-local');
@@ -7173,6 +7579,35 @@ function bindMemoryPanelActions() {
             toastr?.success?.('本地向量模型已可用', '书架向量库');
         } catch (error) {
             setBookshelfModelStatus(`失败：${error?.message || error}`);
+            toastr?.error?.(error?.message || String(error), '书架向量库');
+        }
+    });
+
+    $(document).off('click.aiWbrBookshelfMemoryVectorize', '#ai_wbr_bookshelf_vectorize_memory').on('click.aiWbrBookshelfMemoryVectorize', '#ai_wbr_bookshelf_vectorize_memory', async (event) => {
+        event.preventDefault();
+        try {
+            setBookshelfStatus('正在同步图谱记忆向量...');
+            const result = await syncMemoryGraphVectors(getMemoryGraph(), getContext(), { force: true });
+            setBookshelfStatus(`图谱向量同步完成：节点 ${result.total} 个，可用 ${result.ready} 个，失败 ${result.failed} 个。`);
+            toastr?.success?.(`图谱向量已同步：${result.ready}/${result.total}`, '书架向量库');
+            renderBookshelfPanel();
+        } catch (error) {
+            setBookshelfStatus(`图谱向量同步失败：${error?.message || error}`);
+            toastr?.error?.(error?.message || String(error), '书架向量库');
+            renderBookshelfPanel();
+        }
+    });
+
+    $(document).off('click.aiWbrBookshelfMemoryReset', '#ai_wbr_bookshelf_reset_memory_vectors').on('click.aiWbrBookshelfMemoryReset', '#ai_wbr_bookshelf_reset_memory_vectors', async (event) => {
+        event.preventDefault();
+        if (!confirm('确定重置当前聊天的图谱记忆向量索引？不会删除图谱本身。')) return;
+        try {
+            await bookshelfDeleteMemoryVectorsForChat(getCurrentChatMemoryKey());
+            setBookshelfStatus('当前聊天的图谱记忆向量已重置。');
+            bookshelfLastTestResults = [];
+            renderBookshelfPanel();
+        } catch (error) {
+            setBookshelfStatus(`图谱向量重置失败：${error?.message || error}`);
             toastr?.error?.(error?.message || String(error), '书架向量库');
         }
     });
@@ -7685,20 +8120,23 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
 
     const mvuSummary = getCombinedStateSummary(context);
     const memoryGraph = getMemoryGraph(context);
-    const memoryCandidates = recallMemoryCandidates(memoryGraph, recentMessages, mvuSummary);
+    let memoryCandidates = recallMemoryCandidates(memoryGraph, recentMessages, mvuSummary);
     const entries = await getWorldbookEntries(context);
     const wbCandidates = recallCandidates(entries, recentMessages, mvuSummary);
     let bookshelfCandidates = [];
     let selectedBookshelf = [];
+    let selectedMemoryVectors = [];
 
     try {
         const bookshelfQuery = buildBookshelfRecallQuery(recentMessages, mvuSummary);
-        const bookshelfResult = await recallBookshelfChunks(bookshelfQuery, context);
-        bookshelfCandidates = bookshelfResult.candidates || [];
-        selectedBookshelf = bookshelfResult.selected || [];
+        const vectorResult = await recallVectorMemoryAndBookshelf(bookshelfQuery, memoryGraph, context);
+        memoryCandidates = mergeMemoryVectorCandidates(memoryCandidates, vectorResult.memoryCandidates || []);
+        selectedMemoryVectors = vectorResult.selectedMemoryVectors || [];
+        bookshelfCandidates = vectorResult.bookshelfCandidates || [];
+        selectedBookshelf = vectorResult.selectedBookshelf || [];
     } catch (error) {
-        console.warn(`${LOG_PREFIX} Bookshelf recall skipped.`, error);
-        setBookshelfStatus(`书架召回跳过：${error?.message || error}`);
+        console.warn(`${LOG_PREFIX} Vector recall skipped.`, error);
+        setBookshelfStatus(`向量召回跳过：${error?.message || error}`);
     }
 
     const combinedCandidates = [...wbCandidates, ...memoryCandidates];
@@ -7732,7 +8170,7 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
             const aiResult = await selectWithAi(context, recentMessages, mvuSummary, combinedCandidates, maxSelectCount);
             
             for (const item of aiResult.selected) {
-                if (item.source === 'memory') {
+                if (item.source === 'memory' || item.source === 'memory-vector') {
                     selectedMem.push(item);
                 } else {
                     selectedWb.push(item);
@@ -7757,9 +8195,13 @@ async function routeWorldbookForMessages(context, recentMessages, routeSource = 
         selectedWb = selectWithFallback(wbCandidates);
         selectedMem = selectMemoryWithFallback(memoryCandidates);
     }
+    selectedMem = mergeSelectedMemoryVectors(selectedMem, selectedMemoryVectors);
 
     if (!combinedCandidates.length && (selectedMem.length || hasMemoryState(memoryGraph))) {
         source = `memory-${routeSource}`;
+    }
+    if (selectedMemoryVectors.length) {
+        source += '+memory-vector';
     }
     if (selectedBookshelf.length) {
         source += '+bookshelf';
@@ -7961,6 +8403,49 @@ function bindText(id, key, normalizer = (value) => String(value)) {
     $(id).val(settings[key]).on('input', function () {
         saveSetting(key, normalizer($(this).val()));
     });
+}
+
+function bindBookshelfDynamicSettingsActions() {
+    const selector = [
+        '#ai_wbr_bookshelf_enabled',
+        '#ai_wbr_bookshelf_auto_inject',
+        '#ai_wbr_bookshelf_memory_vector',
+        '#ai_wbr_bookshelf_only_bound',
+        '#ai_wbr_bookshelf_allow_global',
+        '#ai_wbr_bookshelf_memory_vector_max',
+        '#ai_wbr_bookshelf_max_chunks',
+        '#ai_wbr_bookshelf_max_chars',
+        '#ai_wbr_bookshelf_min_score',
+        '#ai_wbr_bookshelf_api_url',
+        '#ai_wbr_bookshelf_api_key',
+        '#ai_wbr_bookshelf_api_model',
+        '#ai_wbr_bookshelf_local_model',
+        '#ai_wbr_bookshelf_embedding_mode',
+    ].join(', ');
+
+    $(document)
+        .off('input.aiWbrBookshelfSettings change.aiWbrBookshelfSettings', selector)
+        .on('input.aiWbrBookshelfSettings change.aiWbrBookshelfSettings', selector, function (event) {
+            const id = String(this.id || '');
+            if (id === 'ai_wbr_bookshelf_enabled') saveSetting('bookshelfEnabled', !!this.checked);
+            else if (id === 'ai_wbr_bookshelf_auto_inject') saveSetting('bookshelfAutoInject', !!this.checked);
+            else if (id === 'ai_wbr_bookshelf_memory_vector') saveSetting('bookshelfMemoryVectorRecall', !!this.checked);
+            else if (id === 'ai_wbr_bookshelf_only_bound') saveSetting('bookshelfOnlyBound', !!this.checked);
+            else if (id === 'ai_wbr_bookshelf_allow_global') saveSetting('bookshelfAllowGlobal', !!this.checked);
+            else if (id === 'ai_wbr_bookshelf_memory_vector_max') saveSetting('bookshelfMemoryVectorMaxItems', clampNumber($(this).val(), defaultSettings.bookshelfMemoryVectorMaxItems, 1, 12));
+            else if (id === 'ai_wbr_bookshelf_max_chunks') saveSetting('bookshelfMaxChunks', clampNumber($(this).val(), defaultSettings.bookshelfMaxChunks, 1, 12));
+            else if (id === 'ai_wbr_bookshelf_max_chars') saveSetting('bookshelfMaxChunkChars', clampNumber($(this).val(), defaultSettings.bookshelfMaxChunkChars, 120, 2000));
+            else if (id === 'ai_wbr_bookshelf_min_score') saveSetting('bookshelfMinScore', clampNumber($(this).val(), defaultSettings.bookshelfMinScore, 0, 1));
+            else if (id === 'ai_wbr_bookshelf_api_url') saveSetting('bookshelfApiUrl', normalizeUrl($(this).val()));
+            else if (id === 'ai_wbr_bookshelf_api_key') saveSetting('bookshelfApiKey', String($(this).val() || '').trim());
+            else if (id === 'ai_wbr_bookshelf_api_model') saveSetting('bookshelfApiModel', String($(this).val() || '').trim());
+            else if (id === 'ai_wbr_bookshelf_local_model') saveSetting('bookshelfLocalModelId', String($(this).val() || '').trim());
+            else if (id === 'ai_wbr_bookshelf_embedding_mode' && event.type === 'change') {
+                saveSetting('bookshelfEmbeddingMode', String($(this).val() || 'api') === 'browser-local' ? 'browser-local' : 'api');
+            }
+            syncBookshelfProviderVisibility();
+            renderBookshelfPanel();
+        });
 }
 
 function renderTitleBlocklistEditor() {

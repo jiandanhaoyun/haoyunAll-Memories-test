@@ -228,7 +228,11 @@
                             </label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject">
                                 <input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />
-                                <span>生成前自动注入书架补充</span>
+                                <span>生成前自动注入向量召回</span>
+                            </label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector">
+                                <input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />
+                                <span>图谱记忆参与向量召回</span>
                             </label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound">
                                 <input id="ai_wbr_bookshelf_only_bound" type="checkbox" />
@@ -272,7 +276,9 @@
                             <input id="ai_wbr_bookshelf_api_model" class="text_pole" type="text" placeholder="text-embedding-3-small" />
                             <label for="ai_wbr_bookshelf_local_model">本地模型 ID</label>
                             <input id="ai_wbr_bookshelf_local_model" class="text_pole" type="text" placeholder="Xenova/paraphrase-multilingual-MiniLM-L12-v2" />
-                            <label for="ai_wbr_bookshelf_max_chunks">每轮最多片段</label>
+                            <label for="ai_wbr_bookshelf_memory_vector_max">图谱召回数量</label>
+                            <input id="ai_wbr_bookshelf_memory_vector_max" class="text_pole" type="number" min="1" max="12" step="1" />
+                            <label for="ai_wbr_bookshelf_max_chunks">TXT 召回数量</label>
                             <input id="ai_wbr_bookshelf_max_chunks" class="text_pole" type="number" min="1" max="12" step="1" />
                             <label for="ai_wbr_bookshelf_max_chars">每段最大字数</label>
                             <input id="ai_wbr_bookshelf_max_chars" class="text_pole" type="number" min="120" max="2000" step="20" />
@@ -282,6 +288,8 @@
                         <div class="ai-wbr-bookshelf-actions">
                             <button id="ai_wbr_bookshelf_test_provider" class="menu_button" type="button">测试向量模型</button>
                             <button id="ai_wbr_bookshelf_load_local" class="menu_button" type="button">下载/加载本地模型</button>
+                            <button id="ai_wbr_bookshelf_vectorize_memory" class="menu_button" type="button">同步图谱向量</button>
+                            <button id="ai_wbr_bookshelf_reset_memory_vectors" class="menu_button" type="button">重置图谱向量</button>
                             <span id="ai_wbr_bookshelf_model_status" class="ai-wbr-status">未测试</span>
                         </div>
 
