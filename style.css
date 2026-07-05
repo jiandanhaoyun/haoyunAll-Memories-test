@@ -771,6 +771,18 @@
     height: clamp(18rem, 42vw, 22rem);
 }
 
+.ai-wbr-graph-section .ai-wbr-memory-graph,
+.ai-wbr-memory-graph-large {
+    min-height: 26rem;
+    height: clamp(28rem, 62vh, 46rem);
+}
+
+.ai-wbr-graph-section .ai-wbr-memory-node-editor,
+.ai-wbr-graph-section .ai-wbr-memory-edge-editor,
+.ai-wbr-graph-section .ai-wbr-memory-list {
+    margin-top: 0.75rem;
+}
+
 .ai-wbr-memory-dashboard {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

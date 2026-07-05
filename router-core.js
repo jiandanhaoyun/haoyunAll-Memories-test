@@ -99,6 +99,11 @@ const defaultSettings = {
     memoryEnabled: false,
     memoryAutoRun: true,
     memoryAutoRunInterval: 20,
+    memoryRealtimeEnabled: true,
+    memoryRealtimeScanMessages: 4,
+    memorySummaryEnabled: true,
+    memorySummaryIntervalMessages: 20,
+    memorySummaryScanMessages: 24,
     memoryInjectToRouter: true,
     memoryReviewRequired: true,
     memoryDebug: false,
@@ -664,6 +669,21 @@ function ensureSettings() {
     }
 
     Object.assign(settings, defaultSettings, extension_settings[MODULE_NAME]);
+    if (!Object.hasOwn(extension_settings[MODULE_NAME], 'memoryRealtimeEnabled')) {
+        settings.memoryRealtimeEnabled = !!settings.memoryAutoRun;
+    }
+    if (!Object.hasOwn(extension_settings[MODULE_NAME], 'memorySummaryEnabled')) {
+        settings.memorySummaryEnabled = !!settings.memoryAutoRun;
+    }
+    if (!Object.hasOwn(extension_settings[MODULE_NAME], 'memorySummaryIntervalMessages')) {
+        settings.memorySummaryIntervalMessages = clampNumber(settings.memoryAutoRunInterval, defaultSettings.memorySummaryIntervalMessages, 1, 100);
+    }
+    if (!Object.hasOwn(extension_settings[MODULE_NAME], 'memoryRealtimeScanMessages')) {
+        settings.memoryRealtimeScanMessages = Math.min(6, clampNumber(settings.memoryScanMessages, defaultSettings.memoryRealtimeScanMessages, 2, 40));
+    }
+    if (!Object.hasOwn(extension_settings[MODULE_NAME], 'memorySummaryScanMessages')) {
+        settings.memorySummaryScanMessages = Math.max(8, clampNumber(settings.memoryScanMessages, defaultSettings.memorySummaryScanMessages, 2, 40));
+    }
     settings.memoryContainersByChat = settings.memoryContainersByChat && typeof settings.memoryContainersByChat === 'object' ? settings.memoryContainersByChat : {};
     settings.memoryLegacyGraphChatKeys = settings.memoryLegacyGraphChatKeys && typeof settings.memoryLegacyGraphChatKeys === 'object' ? settings.memoryLegacyGraphChatKeys : {};
     settings.worldSelectionStates = settings.worldSelectionStates && typeof settings.worldSelectionStates === 'object' ? settings.worldSelectionStates : {};
@@ -1733,6 +1753,7 @@ function normalizeChatMemoryContainer(container) {
         : null;
     normalized.chatKey = String(normalized.chatKey || '');
     normalized.lastAutoMessageCount = clampNumber(normalized.lastAutoMessageCount, 0, 0, 1000000);
+    normalized.lastSummaryMessageCount = clampNumber(normalized.lastSummaryMessageCount, 0, 0, 1000000);
     normalized.status = String(normalized.status || '');
     normalized.lastTurnSignature = String(normalized.lastTurnSignature || '');
     normalized.lastPrompt = String(normalized.lastPrompt || '');
@@ -2192,10 +2213,10 @@ function getMemorySourceSignature(recentMessages) {
         .join('|');
 }
 
-function getMemorySourceSnapshot(context = getContext(), recentMessages = null) {
+function getMemorySourceSnapshot(context = getContext(), recentMessages = null, scanCount = settings.memoryRealtimeScanMessages || settings.memoryScanMessages) {
     const messages = Array.isArray(recentMessages)
         ? recentMessages
-        : getMemoryRelevantMessages(Array.isArray(context?.chat) ? context.chat : [], settings.memoryScanMessages);
+        : getMemoryRelevantMessages(Array.isArray(context?.chat) ? context.chat : [], scanCount);
     const last = messages[messages.length - 1] || {};
     const chatKey = getCurrentChatMemoryKey(context);
     const sourceSignature = getMemorySourceSignature(messages);
@@ -2242,7 +2263,8 @@ function isMemorySourceCurrent(source, context = getContext()) {
         return false;
     }
     const chat = Array.isArray(context?.chat) ? context.chat : [];
-    const currentMessages = getMemoryRelevantMessages(chat, settings.memoryScanMessages);
+    const scanCount = clampNumber(source.scanMessages, settings.memoryRealtimeScanMessages || settings.memoryScanMessages, 2, 40);
+    const currentMessages = getMemoryRelevantMessages(chat, scanCount);
     const current = getMemorySourceSnapshot(context, currentMessages);
     return current.messageCount === Number(source.messageCount || 0)
         && current.sourceSignature === String(source.sourceSignature || '')
@@ -2829,7 +2851,7 @@ function stopMemoryAnimation(success = true) {
     }
 }
 
-async function runMemoryGraphUpdate(reason = 'auto') {
+async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
     if (!settings.memoryEnabled || isMemoryWorkerRunning || isRouterSelectionRequest) {
         return false;
     }
@@ -2837,20 +2859,31 @@ async function runMemoryGraphUpdate(reason = 'auto') {
     const context = getContext();
     const memoryRunChatKey = getCurrentChatMemoryKey(context);
     const chat = Array.isArray(context?.chat) ? context.chat : [];
-    const recentMessages = getMemoryRelevantMessages(chat, settings.memoryScanMessages);
+    const mode = options.mode || (reason === 'summary' || reason === 'manual_summary' ? 'summary' : 'realtime');
+    const scanMessages = clampNumber(
+        options.scanMessages ?? (mode === 'summary' ? settings.memorySummaryScanMessages : settings.memoryRealtimeScanMessages),
+        mode === 'summary' ? defaultSettings.memorySummaryScanMessages : defaultSettings.memoryRealtimeScanMessages,
+        2,
+        40,
+    );
+    const recentMessages = getMemoryRelevantMessages(chat, scanMessages);
     if (recentMessages.length < 2) {
         return false;
     }
 
     const signature = getMemoryTurnSignature(recentMessages);
-    const source = getMemorySourceSnapshot(context, recentMessages);
-    if (reason === 'auto' && signature && signature === getCurrentMemoryLastTurnSignature(context)) {
+    const source = {
+        ...getMemorySourceSnapshot(context, recentMessages, scanMessages),
+        mode,
+        scanMessages,
+    };
+    if (mode === 'realtime' && reason !== 'manual' && signature && signature === getCurrentMemoryLastTurnSignature(context)) {
         return false;
     }
 
     isMemoryWorkerRunning = true;
     startMemoryAnimation();
-    setMemoryStatus('记忆整理中...');
+    setMemoryStatus(mode === 'summary' ? '间隔归纳整理中...' : '实时记忆整理中...');
 
     try {
         const graph = getMemoryGraph();
@@ -2910,10 +2943,10 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 if (!isMemorySourceCurrent(source, context)) {
                     debugLog('Discarded memory update because source floor changed before completion', {
                         source,
-                        current: getMemorySourceSnapshot(context),
+                        current: getMemorySourceSnapshot(context, null, scanMessages),
                     });
                     setCurrentMemoryLastTurnSignature('', context);
-                    setMemoryStatus('记忆整理已跳过：检测到 roll / swipe / 楼层变化', context);
+                    setMemoryStatus(`${mode === 'summary' ? '间隔归纳' : '实时整理'}已跳过：检测到 roll / swipe / 楼层变化`, context);
                     stopMemoryAnimation(false);
                     return false;
                 }
@@ -2935,9 +2968,14 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                     setCurrentMemorySource(source, context);
                     setCurrentMemoryLastTurnSignature(signature, context);
                     const updatedContainer = getChatMemoryContainer(context);
-                    updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
+                    const messageCount = getMemoryAutoRunMessageCount(context);
+                    if (mode === 'summary') {
+                        updatedContainer.lastSummaryMessageCount = messageCount;
+                    } else {
+                        updatedContainer.lastAutoMessageCount = messageCount;
+                    }
                     persistChatMemoryContainer(updatedContainer, context);
-                    setMemoryStatus(`待确认：${getMemoryReviewQueue(context).length} 条记忆更新`);
+                    setMemoryStatus(`${mode === 'summary' ? '归纳待确认' : '实时待确认'}：${getMemoryReviewQueue(context).length} 条记忆更新`);
                     playStatusBurst('✦', 'memory');
                     toastr?.info?.(`已加入待确认记忆：${review.title}`, '世界书读取');
                     stopMemoryAnimation(true);
@@ -2948,11 +2986,16 @@ async function runMemoryGraphUpdate(reason = 'auto') {
                 setCurrentMemorySource(source, context);
                 setCurrentMemoryLastTurnSignature(signature, context);
                 const updatedContainer = getChatMemoryContainer(context);
-                updatedContainer.lastAutoMessageCount = getMemoryAutoRunMessageCount(context);
+                const messageCount = getMemoryAutoRunMessageCount(context);
+                if (mode === 'summary') {
+                    updatedContainer.lastSummaryMessageCount = messageCount;
+                } else {
+                    updatedContainer.lastAutoMessageCount = messageCount;
+                }
                 persistChatMemoryContainer(updatedContainer, context);
                 const nodeCount = memoryResult.graph.nodes.length;
                 const linkCount = memoryResult.graph.links.length;
-                setMemoryStatus(`已更新：${nodeCount} 节点 / ${linkCount} 关系`);
+                setMemoryStatus(`${mode === 'summary' ? '归纳已更新' : '实时已更新'}：${nodeCount} 节点 / ${linkCount} 关系`);
                 if (memoryResult.touchedEntries.length) {
                     playEntryBurst(memoryResult.touchedEntries, {
                         variant: 'memory',
@@ -2994,22 +3037,39 @@ async function runMemoryGraphUpdate(reason = 'auto') {
 }
 
 function scheduleMemoryGraphUpdate() {
-    if (!settings.memoryEnabled || !settings.memoryAutoRun) {
+    if (!settings.memoryEnabled) {
         return;
     }
 
     const context = getContext();
-    const interval = clampNumber(settings.memoryAutoRunInterval, defaultSettings.memoryAutoRunInterval, 1, 100);
     const currentCount = getMemoryAutoRunMessageCount(context);
-    const lastCount = clampNumber(getChatMemoryContainer(context).lastAutoMessageCount, 0, 0, 1000000);
-    if (currentCount - lastCount < interval) {
-        debugLog('Memory auto-run skipped by interval', { currentCount, lastCount, interval });
+    const container = getChatMemoryContainer(context);
+    const shouldRunRealtime = !!settings.memoryRealtimeEnabled;
+    const summaryInterval = clampNumber(settings.memorySummaryIntervalMessages, defaultSettings.memorySummaryIntervalMessages, 1, 100);
+    const lastSummaryCount = clampNumber(container.lastSummaryMessageCount || container.lastAutoMessageCount, 0, 0, 1000000);
+    const shouldRunSummary = !!settings.memorySummaryEnabled && currentCount - lastSummaryCount >= summaryInterval;
+
+    if (!shouldRunRealtime && !shouldRunSummary) {
+        debugLog('Memory update skipped', { currentCount, lastSummaryCount, summaryInterval });
         return;
     }
 
     clearTimeout(memoryUpdateTimer);
-    memoryUpdateTimer = setTimeout(() => {
-        runMemoryGraphUpdate('auto');
+    memoryUpdateTimer = setTimeout(async () => {
+        if (shouldRunRealtime) {
+            await runMemoryGraphUpdate('realtime', {
+                mode: 'realtime',
+                scanMessages: settings.memoryRealtimeScanMessages,
+            });
+        }
+        if (shouldRunSummary) {
+            setTimeout(() => {
+                runMemoryGraphUpdate('summary', {
+                    mode: 'summary',
+                    scanMessages: settings.memorySummaryScanMessages,
+                });
+            }, shouldRunRealtime ? 1100 : 0);
+        }
     }, 900);
 }
 
@@ -4183,7 +4243,7 @@ function parkStandalonePanels() {
         parking = $('<div id="ai_wbr_console_parking" class="ai-wbr-console-parking"></div>');
         $('body').append(parking);
     }
-    $('#ai_wbr_memory_section, #ai_worldbook_router_settings').detach().appendTo(parking);
+    $('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_worldbook_router_settings').detach().appendTo(parking);
 }
 
 function renderStandaloneOverview(container) {
@@ -4330,7 +4390,10 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
         renderStandaloneInjection(body);
     } else if (tabId === 'memory') {
         body.append($('#ai_wbr_memory_section'));
-        renderMemoryPanel();
+        renderMemoryPanel('memory');
+    } else if (tabId === 'graph') {
+        body.append($('#ai_wbr_memory_graph_section'));
+        renderMemoryPanel('graph');
     } else if (tabId === 'model') {
         renderStandaloneModel(body);
     } else if (tabId === 'debug') {
@@ -5069,8 +5132,11 @@ function bindMemoryGraphSvgInteractions() {
     });
 }
 
-function renderMemoryPanel() {
-    if (!$('#ai_wbr_memory_graph').length) {
+function renderMemoryPanel(scope = 'all') {
+    const hasMemoryPanel = $('#ai_wbr_memory_status, #ai_wbr_memory_review_queue, #ai_wbr_memory_state_editor').length > 0;
+    const hasGraphPanel = $('#ai_wbr_memory_graph').length > 0;
+    const hasGraphListPanel = $('#ai_wbr_memory_nodes, #ai_wbr_memory_links').length > 0;
+    if (!hasMemoryPanel && !hasGraphPanel) {
         return;
     }
 
@@ -5080,52 +5146,60 @@ function renderMemoryPanel() {
         selectedNodeId: memoryGraphSelectedNodeId,
         linkSourceId: memoryGraphLinkSourceId,
     });
-    $('#ai_wbr_memory_status').text(getCurrentMemoryStatus() || (settings.memoryEnabled ? '待整理' : '未启用'));
-    $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
-    $('#ai_wbr_memory_debug_panel').toggle(!!settings.memoryDebug);
-    $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt() || '尚无后置记忆 Prompt');
-    $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw() || '尚无后置记忆返回');
-    $('#ai_wbr_memory_error').text(getCurrentMemoryLastError() || '尚无错误');
-    renderMemoryDashboard(graph);
-    renderMemoryReviewQueue();
+    if (hasMemoryPanel) {
+        $('#ai_wbr_memory_status').text(getCurrentMemoryStatus() || (settings.memoryEnabled ? '待整理' : '未启用'));
+        $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
+        $('#ai_wbr_memory_debug_panel').toggle(!!settings.memoryDebug);
+        $('#ai_wbr_memory_prompt').text(getCurrentMemoryLastPrompt() || '尚无后置记忆 Prompt');
+        $('#ai_wbr_memory_raw').text(getCurrentMemoryLastRaw() || '尚无后置记忆返回');
+        $('#ai_wbr_memory_error').text(getCurrentMemoryLastError() || '尚无错误');
+        renderMemoryDashboard(graph);
+        renderMemoryReviewQueue();
+    }
     renderMemoryGraphSvg(graph);
     renderMemoryNodeEditor(graph);
     renderMemoryEdgeEditor(graph);
 
-    const stateRows = getMemoryStateRows(graph);
-    const stateTable = $('<table class="ai-wbr-memory-table"></table>');
-    stateTable.append('<thead><tr><th>状态字段</th><th>当前值</th></tr></thead>');
-    const stateBody = $('<tbody></tbody>');
-    for (const row of stateRows) {
-        stateBody.append(
-            $('<tr></tr>')
-                .append($('<th scope="row"></th>')
-                    .append($('<div></div>').text(row.label))
-                    .append(row.description ? $('<div class="ai-wbr-memory-state-desc"></div>').text(row.description) : '')
-                    .append(row.isCustom
-                        ? $('<button class="menu_button ai-wbr-memory-delete-state-definition m-t-05" type="button">删除</button>')
-                            .attr('data-memory-state-definition-key', row.key)
-                        : ''))
-                .append($('<td></td>').append(
-                    $('<input class="text_pole" type="text" />')
-                        .attr('data-memory-state-field', row.key)
-                        .val(row.value),
-                )),
+    if (hasMemoryPanel) {
+        const stateRows = getMemoryStateRows(graph);
+        const stateTable = $('<table class="ai-wbr-memory-table"></table>');
+        stateTable.append('<thead><tr><th>状态字段</th><th>当前值</th></tr></thead>');
+        const stateBody = $('<tbody></tbody>');
+        for (const row of stateRows) {
+            stateBody.append(
+                $('<tr></tr>')
+                    .append($('<th scope="row"></th>')
+                        .append($('<div></div>').text(row.label))
+                        .append(row.description ? $('<div class="ai-wbr-memory-state-desc"></div>').text(row.description) : '')
+                        .append(row.isCustom
+                            ? $('<button class="menu_button ai-wbr-memory-delete-state-definition m-t-05" type="button">删除</button>')
+                                .attr('data-memory-state-definition-key', row.key)
+                            : ''))
+                    .append($('<td></td>').append(
+                        $('<input class="text_pole" type="text" />')
+                            .attr('data-memory-state-field', row.key)
+                            .val(row.value),
+                    )),
+            );
+        }
+        stateTable.append(stateBody);
+        $('#ai_wbr_memory_state_editor').empty().append(
+            $('<div class="ai-wbr-memory-subtitle"><b>新增自定义状态字段</b></div>'),
+            $(`
+                <div class="ai-wbr-memory-add-state">
+                    <input id="ai_wbr_memory_new_state_label" class="text_pole" type="text" placeholder="字段名，例如：道具" />
+                    <input id="ai_wbr_memory_new_state_instruction" class="text_pole" type="text" placeholder="字段说明，例如：user背包里的道具" />
+                    <button id="ai_wbr_memory_add_state_definition" class="menu_button" type="button">添加字段</button>
+                </div>
+            `),
+            $('<div class="ai-wbr-memory-subtitle"><b>状态表（固定更新）</b></div>'),
+            $('<div class="ai-wbr-memory-table-wrap"></div>').append(stateTable),
         );
     }
-    stateTable.append(stateBody);
-    $('#ai_wbr_memory_state_editor').empty().append(
-        $('<div class="ai-wbr-memory-subtitle"><b>新增自定义状态字段</b></div>'),
-        $(`
-            <div class="ai-wbr-memory-add-state">
-                <input id="ai_wbr_memory_new_state_label" class="text_pole" type="text" placeholder="字段名，例如：道具" />
-                <input id="ai_wbr_memory_new_state_instruction" class="text_pole" type="text" placeholder="字段说明，例如：user背包里的道具" />
-                <button id="ai_wbr_memory_add_state_definition" class="menu_button" type="button">添加字段</button>
-            </div>
-        `),
-        $('<div class="ai-wbr-memory-subtitle"><b>状态表（固定更新）</b></div>'),
-        $('<div class="ai-wbr-memory-table-wrap"></div>').append(stateTable),
-    );
+
+    if (!hasMemoryPanel && !hasGraphListPanel) {
+        return;
+    }
 
     const eventNodes = getMemoryEventNodes(graph);
     const nonEventNodes = getMemoryNonEventNodes(graph);
@@ -5328,20 +5402,36 @@ function renderMemoryEdgeEditor(graph) {
 
 function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_memory_enabled', 'memoryEnabled');
-    bindCheckbox('#ai_wbr_memory_auto_run', 'memoryAutoRun');
+    bindCheckbox('#ai_wbr_memory_auto_run', 'memoryRealtimeEnabled');
+    bindCheckbox('#ai_wbr_memory_realtime_enabled', 'memoryRealtimeEnabled');
+    bindCheckbox('#ai_wbr_memory_summary_enabled', 'memorySummaryEnabled');
     bindCheckbox('#ai_wbr_memory_inject_to_router', 'memoryInjectToRouter');
     bindCheckbox('#ai_wbr_memory_review_required', 'memoryReviewRequired');
     bindCheckbox('#ai_wbr_memory_debug', 'memoryDebug');
     bindCheckbox('#ai_wbr_memory_scope_debug', 'memoryScopeDebug');
-    bindNumber('#ai_wbr_memory_auto_run_interval', 'memoryAutoRunInterval', 1, 100);
-    bindNumber('#ai_wbr_memory_scan_messages', 'memoryScanMessages', 2, 40);
+    bindNumber('#ai_wbr_memory_auto_run_interval', 'memorySummaryIntervalMessages', 1, 100);
+    bindNumber('#ai_wbr_memory_scan_messages', 'memorySummaryScanMessages', 2, 40);
+    bindNumber('#ai_wbr_memory_realtime_scan_messages', 'memoryRealtimeScanMessages', 2, 40);
+    bindNumber('#ai_wbr_memory_summary_interval_messages', 'memorySummaryIntervalMessages', 1, 100);
+    bindNumber('#ai_wbr_memory_summary_scan_messages', 'memorySummaryScanMessages', 2, 40);
     bindNumber('#ai_wbr_memory_retries', 'memoryRetries', 0, 10);
     bindNumber('#ai_wbr_memory_max_nodes', 'memoryMaxNodes', 5, 200);
     bindNumber('#ai_wbr_memory_max_links', 'memoryMaxLinks', 0, 400);
 
     $('#ai_wbr_memory_run_now').on('click', async (event) => {
         event.preventDefault();
-        await runMemoryGraphUpdate('manual');
+        await runMemoryGraphUpdate('manual', {
+            mode: 'realtime',
+            scanMessages: settings.memoryRealtimeScanMessages,
+        });
+    });
+
+    $('#ai_wbr_memory_summary_now').on('click', async (event) => {
+        event.preventDefault();
+        await runMemoryGraphUpdate('manual_summary', {
+            mode: 'summary',
+            scanMessages: settings.memorySummaryScanMessages,
+        });
     });
 
     $('#ai_wbr_memory_accept_all').on('click', (event) => {
@@ -6129,6 +6219,7 @@ function createFloatingMemoryWindow() {
             '<button class="ai-wbr-console-tab" type="button" data-tab="routes">路由</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="injection">注入</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="memory">记忆</button>' +
+            '<button class="ai-wbr-console-tab" type="button" data-tab="graph">图谱</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="model">模型</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="debug">调试</button>' +
             '<button class="ai-wbr-console-tab" type="button" data-tab="settings">设置</button>' +

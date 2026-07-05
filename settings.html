@@ -129,17 +129,22 @@
 
             <div class="ai-wbr-section" id="ai_wbr_memory_section">
                 <div class="ai-wbr-section-title">
-                    <b>后置轻量记忆图谱</b>
+                    <b>记忆存储与整理</b>
                 </div>
                 <label class="checkbox_label" for="ai_wbr_memory_enabled">
                     <input id="ai_wbr_memory_enabled" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="在主回复完成后调用一次轻量总结，把长期有价值的信息写入可视化记忆图谱。"></span>
-                    <span>启用后置记忆整理</span>
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="启用后把聊天中长期有价值的信息写入当前聊天/角色对应的记忆容器。"></span>
+                    <span>启用记忆存储</span>
                 </label>
-                <label class="checkbox_label" for="ai_wbr_memory_auto_run">
-                    <input id="ai_wbr_memory_auto_run" type="checkbox" />
-                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后每次正式回复结束自动整理一次；也可以关闭后用“立即整理本轮”手动触发。"></span>
-                    <span>回复结束后自动整理</span>
+                <label class="checkbox_label" for="ai_wbr_memory_realtime_enabled">
+                    <input id="ai_wbr_memory_realtime_enabled" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后每轮回复结束都会读取最近几条楼层，实时补充刚发生的事实、状态和关系。"></span>
+                    <span>启用实时整理（每轮更新）</span>
+                </label>
+                <label class="checkbox_label" for="ai_wbr_memory_summary_enabled">
+                    <input id="ai_wbr_memory_summary_enabled" type="checkbox" />
+                    <span class="fa-solid fa-circle-info ai-wbr-help" title="开启后按间隔读取更长一段上下文，用于压缩、归纳和修正长期记忆。"></span>
+                    <span>启用间隔归纳</span>
                 </label>
                 <label class="checkbox_label" for="ai_wbr_memory_inject_to_router">
                     <input id="ai_wbr_memory_inject_to_router" type="checkbox" />
@@ -163,11 +168,14 @@
                 </label>
 
                 <div class="ai-wbr-grid">
-                    <label for="ai_wbr_memory_auto_run_interval"><span class="fa-solid fa-circle-info ai-wbr-help" title="开启自动整理时，每隔多少条聊天消息触发一次。填 1 表示每轮都整理；填 20 表示每 20 条聊天楼层整理一次。"></span>自动整理间隔消息数</label>
-                    <input id="ai_wbr_memory_auto_run_interval" class="text_pole" type="number" min="1" max="100" step="1" />
+                    <label for="ai_wbr_memory_realtime_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="实时整理读取最近多少条聊天消息。建议 3-6 条，用于每轮快速更新，不承担长期压缩。"></span>实时整理读取消息数</label>
+                    <input id="ai_wbr_memory_realtime_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
 
-                    <label for="ai_wbr_memory_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="后置记忆整理读取最近多少条聊天消息。只用于总结，不影响主模型历史楼层限制。"></span>记忆整理读取消息数</label>
-                    <input id="ai_wbr_memory_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
+                    <label for="ai_wbr_memory_summary_interval_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="间隔归纳每隔多少条聊天消息触发一次。填 20 表示每 20 条聊天楼层进行一次长期归纳。"></span>间隔归纳消息数</label>
+                    <input id="ai_wbr_memory_summary_interval_messages" class="text_pole" type="number" min="1" max="100" step="1" />
+
+                    <label for="ai_wbr_memory_summary_scan_messages"><span class="fa-solid fa-circle-info ai-wbr-help" title="间隔归纳读取最近多少条聊天消息。建议比实时整理更大，用于压缩阶段性剧情和关系变化。"></span>间隔归纳读取消息数</label>
+                    <input id="ai_wbr_memory_summary_scan_messages" class="text_pole" type="number" min="2" max="40" step="1" />
 
                     <label for="ai_wbr_memory_max_nodes"><span class="fa-solid fa-circle-info ai-wbr-help" title="记忆图谱最多保留多少个节点，超出后优先保留重要度较高、最近更新的节点。"></span>最大记忆节点数</label>
                     <input id="ai_wbr_memory_max_nodes" class="text_pole" type="number" min="5" max="200" step="1" />
@@ -183,7 +191,8 @@
                 </div>
 
                 <div class="ai-wbr-actions">
-                    <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即整理本轮</button>
+                    <button id="ai_wbr_memory_run_now" class="menu_button" type="button">立即实时整理</button>
+                    <button id="ai_wbr_memory_summary_now" class="menu_button" type="button">立即归纳整理</button>
                     <button id="ai_wbr_memory_accept_all" class="menu_button" type="button">确认全部更新</button>
                     <button id="ai_wbr_memory_reject_all" class="menu_button" type="button">清空待确认</button>
                     <button id="ai_wbr_memory_save_json" class="menu_button" type="button">保存 JSON</button>
@@ -193,12 +202,7 @@
 
                 <div id="ai_wbr_memory_dashboard" class="ai-wbr-memory-dashboard"></div>
                 <div id="ai_wbr_memory_review_queue" class="ai-wbr-memory-review-queue"></div>
-                <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph"></div>
-                <div id="ai_wbr_memory_node_editor" class="ai-wbr-memory-node-editor"></div>
-                <div id="ai_wbr_memory_edge_editor" class="ai-wbr-memory-edge-editor"></div>
                 <div id="ai_wbr_memory_state_editor" class="ai-wbr-memory-state-editor"></div>
-                <div id="ai_wbr_memory_nodes" class="ai-wbr-memory-list"></div>
-                <div id="ai_wbr_memory_links" class="ai-wbr-memory-list"></div>
                 <div class="ai-wbr-router-raw-block">
                     <div><b>记忆图谱 JSON</b></div>
                     <textarea id="ai_wbr_memory_json" class="text_pole ai-wbr-memory-json" rows="9"></textarea>
@@ -217,6 +221,17 @@
                         <pre id="ai_wbr_memory_error" class="ai-wbr-router-raw">尚无错误</pre>
                     </div>
                 </div>
+            </div>
+
+            <div class="ai-wbr-section ai-wbr-graph-section" id="ai_wbr_memory_graph_section">
+                <div class="ai-wbr-section-title">
+                    <b>记忆图谱</b>
+                </div>
+                <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph ai-wbr-memory-graph-large"></div>
+                <div id="ai_wbr_memory_node_editor" class="ai-wbr-memory-node-editor"></div>
+                <div id="ai_wbr_memory_edge_editor" class="ai-wbr-memory-edge-editor"></div>
+                <div id="ai_wbr_memory_nodes" class="ai-wbr-memory-list"></div>
+                <div id="ai_wbr_memory_links" class="ai-wbr-memory-list"></div>
             </div>
 
             <div class="ai-wbr-debug">
