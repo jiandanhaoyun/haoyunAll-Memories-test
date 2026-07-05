@@ -1607,6 +1607,75 @@
         grid-template-columns: 1fr;
     }
 
+    .ai-wbr-floating-window.ai-wbr-floating-window-graph {
+        height: 100dvh !important;
+        max-height: 100dvh !important;
+    }
+
+    .ai-wbr-floating-window-graph .ai-wbr-floating-header,
+    .ai-wbr-floating-window-graph .ai-wbr-console-tabs {
+        flex: 0 0 auto;
+    }
+
+    .ai-wbr-graph-topbar {
+        align-items: flex-start;
+        padding: 0.75rem 0.85rem;
+    }
+
+    .ai-wbr-graph-topbar-actions {
+        flex-wrap: nowrap;
+        gap: 0.4rem;
+    }
+
+    .ai-wbr-graph-topbar-actions .menu_button {
+        min-width: 2.6rem;
+        max-width: 3.2rem;
+        padding: 0.35rem 0.45rem;
+        line-height: 1.15;
+        white-space: normal;
+        word-break: keep-all;
+    }
+
+    .ai-wbr-graph-shell {
+        display: block;
+        position: relative;
+        flex: 1 1 auto;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .ai-wbr-graph-workspace .ai-wbr-memory-graph {
+        width: 100%;
+        height: 100%;
+        min-height: 24rem;
+    }
+
+    .ai-wbr-memory-detail-drawer {
+        position: absolute;
+        inset: 0 0 0 auto;
+        z-index: 5;
+        width: min(92vw, 24rem);
+        max-width: calc(100vw - 1.5rem);
+        height: 100%;
+        border-left: 1px solid rgba(176, 225, 255, 0.22);
+        box-shadow: -18px 0 34px rgba(0, 0, 0, 0.36);
+        transform: translateX(105%);
+        transition: transform 0.22s ease;
+    }
+
+    .ai-wbr-memory-detail-drawer.open {
+        transform: translateX(0);
+    }
+
+    .ai-wbr-memory-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ai-wbr-memory-graph-toolbar {
+        max-width: calc(100% - 1rem);
+    }
+
     .ai-wbr-token-editor {
         flex-direction: column;
         align-items: stretch;
