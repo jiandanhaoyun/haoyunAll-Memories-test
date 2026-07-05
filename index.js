@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.4';
+const VERSION = '0.5.5';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -519,19 +519,20 @@ const VERSION = '0.5.4';
             return true;
         }
 
-        const menuHost = target.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group');
-        if (!menuHost) return false;
-
-        let node = target;
-        while (node && node !== document && node !== menuHost.parentElement) {
-            const text = String(node.innerText || node.textContent || '').replace(/\s+/g, ' ').trim();
-            if (text.includes(DISPLAY_NAME)) {
-                return true;
-            }
-            if (node === menuHost) break;
-            node = node.parentElement;
+        const menuItem = target.closest('.extension_container, .list-group-item, [role="menuitem"], [role="button"], button, a');
+        if (!menuItem) return false;
+        if (!menuItem.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group')) {
+            return false;
         }
-        return false;
+        if (menuItem.id === ENTRY_ID || menuItem.id === ROW_ID || menuItem.dataset?.aiWbrEntry === 'true') {
+            return true;
+        }
+        if (menuItem.dataset?.extensionId === 'ai_worldbook_router') {
+            return true;
+        }
+
+        const text = String(menuItem.innerText || menuItem.textContent || '').replace(/\s+/g, ' ').trim();
+        return text === DISPLAY_NAME || text === `打开${DISPLAY_NAME}控制台`;
     }
 
     function bindGlobalEntryDelegates() {
