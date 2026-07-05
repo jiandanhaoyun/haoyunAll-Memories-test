@@ -223,15 +223,27 @@
                 </div>
             </div>
 
-            <div class="ai-wbr-section ai-wbr-graph-section" id="ai_wbr_memory_graph_section">
-                <div class="ai-wbr-section-title">
-                    <b>记忆图谱</b>
+            <div class="ai-wbr-section ai-wbr-graph-section ai-wbr-graph-workspace" id="ai_wbr_memory_graph_section">
+                <div class="ai-wbr-graph-topbar">
+                    <div>
+                        <div class="ai-wbr-graph-kicker">Memory Graph</div>
+                        <div class="ai-wbr-graph-title">记忆图谱</div>
+                    </div>
+                    <div class="ai-wbr-graph-topbar-actions">
+                        <button id="ai_wbr_memory_graph_fit" class="menu_button" type="button">适配视图</button>
+                        <button id="ai_wbr_memory_graph_close_detail" class="menu_button" type="button">关闭详情</button>
+                    </div>
                 </div>
-                <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph ai-wbr-memory-graph-large"></div>
-                <div id="ai_wbr_memory_node_editor" class="ai-wbr-memory-node-editor"></div>
-                <div id="ai_wbr_memory_edge_editor" class="ai-wbr-memory-edge-editor"></div>
-                <div id="ai_wbr_memory_nodes" class="ai-wbr-memory-list"></div>
-                <div id="ai_wbr_memory_links" class="ai-wbr-memory-list"></div>
+                <div class="ai-wbr-graph-shell">
+                    <div id="ai_wbr_memory_graph" class="ai-wbr-memory-graph ai-wbr-memory-graph-large"></div>
+                    <aside id="ai_wbr_memory_detail_drawer" class="ai-wbr-memory-detail-drawer">
+                        <div class="ai-wbr-memory-detail-empty">点击图谱中的记忆卡片或关系线查看详情。</div>
+                    </aside>
+                </div>
+                <div id="ai_wbr_memory_node_editor" class="ai-wbr-memory-node-editor ai-wbr-hidden-editor"></div>
+                <div id="ai_wbr_memory_edge_editor" class="ai-wbr-memory-edge-editor ai-wbr-hidden-editor"></div>
+                <div id="ai_wbr_memory_nodes" class="ai-wbr-memory-list ai-wbr-graph-list-collapsed"></div>
+                <div id="ai_wbr_memory_links" class="ai-wbr-memory-list ai-wbr-graph-list-collapsed"></div>
             </div>
 
             <div class="ai-wbr-debug">
