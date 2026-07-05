@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.17';
+const VERSION = '0.5.18';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -189,13 +189,7 @@ const VERSION = '0.5.17';
                     node.blur?.();
                 }
             });
-        try {
-            document.activeElement?.blur?.();
-            document.body?.dispatchEvent?.(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-            document.dispatchEvent?.(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-        } catch (_) {
-            // Some mobile WebViews restrict synthetic keyboard events.
-        }
+        document.activeElement?.blur?.();
     }
 
     function buttonStyle(primary) {
@@ -217,6 +211,7 @@ const VERSION = '0.5.17';
         const diagnosticsEnabled = !!options.diagnosticsEnabled;
         const forcePanel = !!options.forcePanel;
         const directUserOpen = !!options.directUserOpen;
+        const reportFailure = !!options.reportFailure;
         closeHostMenusBeforeOpen();
         const isVisible = forceConsoleVisible();
         if (isVisible) {
@@ -226,7 +221,7 @@ const VERSION = '0.5.17';
             }
             return true;
         }
-        if (diagnosticsEnabled || forcePanel || directUserOpen) {
+        if (reportFailure && (diagnosticsEnabled || forcePanel || directUserOpen)) {
             showInstantClickPanel('控制台未显示', { force: true });
             showPanel('\u5165\u53e3\u70b9\u51fb\u5df2\u6536\u5230\uff0c\u4f46\u5b8c\u6574\u63a7\u5236\u53f0\u4ecd\u672a\u8fdb\u5165\u6253\u5f00\u72b6\u6001\u3002\u8bf7\u628a\u4e0b\u9762\u72b6\u6001\u53d1\u7ed9\u6211\u3002');
         }
@@ -492,8 +487,8 @@ const VERSION = '0.5.17';
 
         keepPanelUntil = Date.now() + ((forcePanel || diagnosticsEnabled) ? 1600 : 0);
         closeHostMenusBeforeOpen();
-        const panel = (forcePanel || diagnosticsEnabled || directUserOpen)
-            ? (document.getElementById(PANEL_ID) || showInstantClickPanel(options.source || '入口', { force: forcePanel || directUserOpen }))
+        const panel = (forcePanel || diagnosticsEnabled)
+            ? (document.getElementById(PANEL_ID) || showInstantClickPanel(options.source || '入口', { force: forcePanel }))
             : document.getElementById(PANEL_ID);
 
         try {
@@ -523,7 +518,7 @@ const VERSION = '0.5.17';
 
             [260, 520, 920, 1400].forEach((delay) => {
                 window.setTimeout(() => {
-                    confirmConsoleVisible(panel, { diagnosticsEnabled, forcePanel, directUserOpen });
+                    confirmConsoleVisible(panel, { diagnosticsEnabled, forcePanel, directUserOpen, reportFailure: delay === 1400 });
                 }, delay);
             });
         }, 100);
@@ -533,7 +528,6 @@ const VERSION = '0.5.17';
         event?.preventDefault?.();
         event?.stopPropagation?.();
         event?.stopImmediatePropagation?.();
-        showInstantClickPanel(event?.type || '入口', { force: true });
         const openNow = () => openConsole({ source: event?.type || '入口' });
         window.setTimeout(openNow, 20);
         window.setTimeout(openNow, 90);
@@ -555,7 +549,6 @@ const VERSION = '0.5.17';
         } catch (_) {
             // no-op
         }
-        showInstantClickPanel(event?.type || '悬浮按钮', { force: true });
         window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 20);
         window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 220);
         window.setTimeout(() => openConsole({ source: event?.type || '悬浮按钮' }), 520);
