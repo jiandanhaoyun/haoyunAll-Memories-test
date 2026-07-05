@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.18';
+const VERSION = '0.5.19';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -589,6 +589,8 @@ const VERSION = '0.5.18';
             handleOpen(event);
         };
 
+        document.addEventListener('pointerdown', delegateOpen, true);
+        document.addEventListener('touchstart', delegateOpen, { capture: true, passive: false });
         document.addEventListener('click', delegateOpen, true);
         document.addEventListener('touchend', delegateOpen, { capture: true, passive: false });
         document.addEventListener('pointerdown', preloadCoreForEntry, true);
