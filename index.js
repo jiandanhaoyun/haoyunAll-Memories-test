@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-const VERSION = '0.5.23';
+    const VERSION = '0.5.24';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
@@ -592,49 +592,74 @@ const VERSION = '0.5.23';
             || value.includes(DISPLAY_NAME));
     }
 
+    function isOwnedMenuEntry(node) {
+        return Boolean(node?.closest?.('#' + ENTRY_ID + ', #' + ROW_ID));
+    }
+
+    function getSafeMenuHost() {
+        const host = getExtensionMenuHost();
+        if (!host || host.id !== 'extensionsMenu') return null;
+        return host;
+    }
+
+    function isInsideSafeMenuHost(node) {
+        const host = getSafeMenuHost();
+        return Boolean(host && node && host.contains(node));
+    }
+
     function isWorldbookMenuTarget(target) {
         const element = asElement(target);
         if (!element?.closest) return false;
         if (element.closest('#' + PANEL_ID + ', #ai_wbr_fab, #' + FALLBACK_BUTTON_ID + ', #ai_wbr_floating_window')) {
             return false;
         }
-        if (element.closest('#' + ENTRY_ID + ', #' + ROW_ID + ', [data-ai-wbr-entry="true"]')) {
+        if (isOwnedMenuEntry(element)) {
             return true;
         }
 
-        const menuItem = element.closest('.extension_container, .list-group-item, [role="menuitem"], [role="button"], button, a, [title], [aria-label], [data-extension-id], [data-extension], [data-name], [data-id]');
+        const menuItem = element.closest('.extension_container, [role="menuitem"], [role="button"], button, a, [data-extension-id], [data-extension], [data-name], [data-id]');
         if (!menuItem) return false;
-        if (!menuItem.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group')) {
+        if (!isInsideSafeMenuHost(menuItem)) {
             return false;
         }
         if (hasWorldbookEntryMeta(menuItem) || hasWorldbookEntryText(menuItem)) {
             return true;
         }
 
-        const labelledParent = menuItem.closest('[title], [aria-label], [data-extension-id], [data-extension], [data-name], [data-id]');
+        const labelledParent = menuItem.closest('[data-extension-id], [data-extension], [data-name], [data-id]');
         return hasWorldbookEntryMeta(labelledParent) || hasWorldbookEntryText(labelledParent);
     }
 
     function getPotentialMenuEntries() {
-        return Array.from(document.querySelectorAll([
+        const ownedEntries = [
+            document.getElementById(ENTRY_ID),
+            document.getElementById(ROW_ID),
+        ].filter(Boolean);
+        const host = getSafeMenuHost();
+        if (!host) return ownedEntries;
+
+        const selectors = [
             '#' + ENTRY_ID,
             '#' + ROW_ID,
             '[data-ai-wbr-entry="true"]',
             '[data-extension-id="ai_worldbook_router"]',
             '[data-extension="ai_worldbook_router"]',
             '[data-id="ai_worldbook_router"]',
-            '[title]',
-            '[aria-label]',
             '.extension_container',
-            '.list-group-item',
             '[role="menuitem"]',
             '[role="button"]',
             'button',
             'a',
-        ].join(','))).filter((node) => {
+        ].join(',');
+
+        const candidates = host.matches?.(selectors)
+            ? [host, ...host.querySelectorAll(selectors)]
+            : Array.from(host.querySelectorAll(selectors));
+
+        return Array.from(new Set([...ownedEntries, ...candidates])).filter((node) => {
             if (!node?.closest) return false;
-            if (!node.closest('#extensionsMenu, #top-settings-holder, .drawer-content, .popup, .menu, .list-group')) return false;
             if (node.closest('#' + PANEL_ID + ', #ai_wbr_fab, #' + FALLBACK_BUTTON_ID + ', #ai_wbr_floating_window')) return false;
+            if (!isOwnedMenuEntry(node) && !isInsideSafeMenuHost(node)) return false;
             return hasWorldbookEntryMeta(node) || hasWorldbookEntryText(node);
         });
     }
@@ -642,11 +667,13 @@ const VERSION = '0.5.23';
     function bindDirectMenuEntry(node) {
         if (!node || node.dataset?.aiWbrDirectBound === VERSION) return;
         node.dataset.aiWbrDirectBound = VERSION;
-        node.dataset.aiWbrEntry = 'true';
-        node.dataset.extensionId = node.dataset.extensionId || 'ai_worldbook_router';
-        node.setAttribute?.('role', node.getAttribute?.('role') || 'button');
-        node.setAttribute?.('tabindex', node.getAttribute?.('tabindex') || '0');
-        node.setAttribute?.('aria-label', node.getAttribute?.('aria-label') || DISPLAY_NAME);
+        if (isOwnedMenuEntry(node)) {
+            node.dataset.aiWbrEntry = 'true';
+            node.dataset.extensionId = node.dataset.extensionId || 'ai_worldbook_router';
+            node.setAttribute?.('role', node.getAttribute?.('role') || 'button');
+            node.setAttribute?.('tabindex', node.getAttribute?.('tabindex') || '0');
+            node.setAttribute?.('aria-label', node.getAttribute?.('aria-label') || DISPLAY_NAME);
+        }
         const directOpen = (event) => handleOpen(event);
         node.addEventListener('pointerdown', directOpen, true);
         node.addEventListener('touchstart', directOpen, { capture: true, passive: false });
