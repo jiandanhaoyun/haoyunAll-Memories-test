@@ -6421,9 +6421,37 @@ function getSettingsContentContainer() {
     return $('#ai_worldbook_router_settings .inline-drawer-content').first();
 }
 
+function ensureBookshelfSettingsSection() {
+    const settingsContent = getSettingsContentContainer();
+    if (!settingsContent.length) return $();
+
+    const memorySection = settingsContent.find('#ai_wbr_memory_section').first();
+    const graphSection = settingsContent.find('#ai_wbr_memory_graph_section').first();
+    let bookshelfSection = settingsContent.find('#ai_wbr_bookshelf_section').first();
+    const bookshelfFold = $('#ai_wbr_bookshelf_panel').closest('.ai-wbr-bookshelf-fold');
+
+    if (!bookshelfSection.length) {
+        bookshelfSection = $('<div class="ai-wbr-section" id="ai_wbr_bookshelf_section"></div>');
+        if (graphSection.length) {
+            graphSection.before(bookshelfSection);
+        } else if (memorySection.length) {
+            memorySection.after(bookshelfSection);
+        } else {
+            settingsContent.append(bookshelfSection);
+        }
+    }
+
+    if (bookshelfFold.length && !bookshelfSection.find('#ai_wbr_bookshelf_panel').length) {
+        bookshelfSection.append(bookshelfFold.detach());
+    }
+    ensureBookshelfStandaloneControls(bookshelfSection);
+    return bookshelfSection;
+}
+
 function restoreStandalonePanelsToSettings() {
     const settingsContent = getSettingsContentContainer();
     if (!settingsContent.length) return;
+    ensureBookshelfSettingsSection();
 
     const memorySection = $('#ai_wbr_memory_section');
     const graphSection = $('#ai_wbr_memory_graph_section');
@@ -6448,9 +6476,13 @@ function restoreStandalonePanelsToSettings() {
         }
     }
     if (bookshelfSection.length && !settingsContent.find('#ai_wbr_bookshelf_section').length) {
-        const targetMemorySection = settingsContent.find('#ai_wbr_memory_section');
-        if (targetMemorySection.length && !targetMemorySection.find('#ai_wbr_bookshelf_panel').length) {
-            targetMemorySection.append(bookshelfSection.detach());
+        const targetGraphSection = settingsContent.find('#ai_wbr_memory_graph_section');
+        if (targetGraphSection.length) {
+            targetGraphSection.before(bookshelfSection.detach());
+        } else if (memorySection.length) {
+            memorySection.after(bookshelfSection.detach());
+        } else {
+            settingsContent.append(bookshelfSection.detach());
         }
     }
 }
@@ -10938,6 +10970,7 @@ async function loadSettingsHtml() {
 async function addSettingsUi() {
     const html = await loadSettingsHtml();
     $('#extensions_settings2').append(html);
+    ensureBookshelfSettingsSection();
 
     bindCheckbox('#ai_wbr_enabled', 'enabled');
     bindCheckbox('#ai_wbr_debug', 'debug');
