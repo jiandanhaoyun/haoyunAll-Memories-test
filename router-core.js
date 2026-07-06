@@ -219,6 +219,11 @@ let memoryGraphLinkSourceId = '';
 let memoryGraphSelectedNodeId = '';
 let memoryGraphSelectedLinkId = '';
 let memoryGraphDetailMode = '';
+let memoryGraphDisplayMode = 'overview';
+let memoryGraphMinLinkWeight = 0.35;
+let memoryGraphSearchText = '';
+let memoryGraphVisibleTypes = new Set();
+let memoryGraphSearchTimer = null;
 let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
 let bookshelfLastTestResults = [];
@@ -6089,6 +6094,159 @@ function escapeCssSelector(value) {
     return text.replace(/["\\]/g, '\\$&');
 }
 
+function getMemoryGraphSearchHaystack(node) {
+    return [
+        node?.id,
+        node?.title,
+        node?.summary,
+        node?.content,
+        node?.location,
+        node?.timeSpan,
+        node?.type,
+        ...(Array.isArray(node?.keys) ? node.keys : []),
+        ...(Array.isArray(node?.tags) ? node.tags : []),
+    ].map(value => String(value || '').toLowerCase()).join('\n');
+}
+
+function getMemoryGraphNodeScore(node, degree = 0, index = 0) {
+    const importance = clampNumber(node?.importance, 0.5, 0, 1);
+    const updatedAt = Date.parse(node?.updatedAt || node?.createdAt || '') || 0;
+    const recencyBoost = updatedAt ? Math.min(0.35, Math.max(0, updatedAt / Math.max(1, Date.now()) * 0.35)) : 0;
+    return (degree * 1.6) + importance + recencyBoost + (1 / Math.max(10, index + 10));
+}
+
+function buildMemoryGraphDisplayModel(graph) {
+    const allNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const allLinks = Array.isArray(graph?.links) ? graph.links : [];
+    const nodeById = new Map(allNodes.map(node => [String(node.id), node]));
+    const selectedNodeId = String(memoryGraphSelectedNodeId || '');
+    const selectedLinkId = String(memoryGraphSelectedLinkId || '');
+    const query = String(memoryGraphSearchText || '').trim().toLowerCase();
+    const minWeight = clampNumber(memoryGraphMinLinkWeight, 0.35, 0, 1);
+    const typeFilter = memoryGraphVisibleTypes instanceof Set ? memoryGraphVisibleTypes : new Set();
+    const hasTypeFilter = typeFilter.size > 0;
+    const degree = new Map(allNodes.map(node => [String(node.id), 0]));
+
+    for (const link of allLinks) {
+        const source = String(link?.source || '');
+        const target = String(link?.target || '');
+        if (!nodeById.has(source) || !nodeById.has(target)) {
+            continue;
+        }
+        const weight = clampNumber(link?.weight, 0.5, 0, 1);
+        degree.set(source, (degree.get(source) || 0) + weight);
+        degree.set(target, (degree.get(target) || 0) + weight);
+    }
+
+    const typeFilteredNodes = allNodes.filter((node) => {
+        const type = String(node?.type || 'event');
+        return !hasTypeFilter || typeFilter.has(type);
+    });
+    const typeFilteredIds = new Set(typeFilteredNodes.map(node => String(node.id)));
+    let mode = String(memoryGraphDisplayMode || 'overview');
+    if (mode === 'focus' && (!selectedNodeId || !nodeById.has(selectedNodeId))) {
+        mode = 'overview';
+    }
+
+    let candidateIds = new Set(typeFilteredIds);
+    if (query) {
+        const matchedIds = new Set(typeFilteredNodes
+            .filter(node => getMemoryGraphSearchHaystack(node).includes(query))
+            .map(node => String(node.id)));
+        for (const link of allLinks) {
+            const source = String(link?.source || '');
+            const target = String(link?.target || '');
+            if (matchedIds.has(source) && typeFilteredIds.has(target)) {
+                matchedIds.add(target);
+            }
+            if (matchedIds.has(target) && typeFilteredIds.has(source)) {
+                matchedIds.add(source);
+            }
+        }
+        candidateIds = matchedIds;
+        mode = 'search';
+    } else if (mode === 'focus') {
+        candidateIds = new Set([selectedNodeId]);
+        for (const link of allLinks) {
+            const source = String(link?.source || '');
+            const target = String(link?.target || '');
+            if (source === selectedNodeId && typeFilteredIds.has(target)) {
+                candidateIds.add(target);
+            }
+            if (target === selectedNodeId && typeFilteredIds.has(source)) {
+                candidateIds.add(source);
+            }
+        }
+    }
+
+    const nodeLimit = mode === 'full' ? 120 : mode === 'focus' ? 54 : mode === 'search' ? 72 : 36;
+    const visibleNodes = typeFilteredNodes
+        .filter(node => candidateIds.has(String(node.id)))
+        .map((node, index) => ({
+            node,
+            score: getMemoryGraphNodeScore(node, degree.get(String(node.id)) || 0, index),
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, nodeLimit)
+        .map(item => item.node);
+    const visibleIds = new Set(visibleNodes.map(node => String(node.id)));
+
+    const linkLimit = mode === 'full' ? 180 : mode === 'overview' ? 80 : 140;
+    const visibleLinks = allLinks
+        .filter((link) => {
+            const source = String(link?.source || '');
+            const target = String(link?.target || '');
+            if (!visibleIds.has(source) || !visibleIds.has(target)) {
+                return false;
+            }
+            if (String(link?.id || '') === selectedLinkId) {
+                return true;
+            }
+            if (mode === 'focus' && (source === selectedNodeId || target === selectedNodeId)) {
+                return true;
+            }
+            return clampNumber(link?.weight, 0.5, 0, 1) >= minWeight;
+        })
+        .map((link, index) => ({
+            link,
+            index,
+            score: (String(link?.id || '') === selectedLinkId ? 10 : 0)
+                + (mode === 'focus' && (String(link?.source || '') === selectedNodeId || String(link?.target || '') === selectedNodeId) ? 4 : 0)
+                + clampNumber(link?.weight, 0.5, 0, 1),
+        }))
+        .sort((a, b) => b.score - a.score || a.index - b.index)
+        .slice(0, linkLimit)
+        .map(item => item.link);
+
+    return {
+        nodes: visibleNodes,
+        links: visibleLinks,
+        mode,
+        query,
+        minWeight,
+        totalNodes: allNodes.length,
+        totalLinks: allLinks.length,
+        hiddenNodes: Math.max(0, allNodes.length - visibleNodes.length),
+        hiddenLinks: Math.max(0, allLinks.length - visibleLinks.length),
+    };
+}
+
+function renderMemoryGraphTypeFilters(graph) {
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const types = [...new Set(nodes.map(node => String(node?.type || 'event')))]
+        .sort((a, b) => getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, a, a).localeCompare(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, b, b)));
+    if (!types.length) {
+        return '';
+    }
+    return `<div class="ai-wbr-memory-graph-typebar">
+        ${types.map((type) => {
+            const active = !(memoryGraphVisibleTypes instanceof Set) || memoryGraphVisibleTypes.size === 0 || memoryGraphVisibleTypes.has(type);
+            const label = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, type, type);
+            return `<button class="menu_button ai-wbr-memory-type-filter${active ? ' active' : ''}" type="button" data-memory-node-type="${escapeHtml(type)}">${escapeHtml(label)}</button>`;
+        }).join('')}
+    </div>`;
+}
+
 function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
     const drawer = $('#ai_wbr_memory_detail_drawer');
     if (!drawer.length) {
@@ -6202,9 +6360,27 @@ function renderMemoryGraphSvg(graph) {
     graph.nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
     graph.links = Array.isArray(graph.links) ? graph.links : [];
 
-    const nodes = graph.nodes.slice(0, 18);
+    const displayModel = buildMemoryGraphDisplayModel(graph);
+    const nodes = displayModel.nodes;
     if (!nodes.length) {
-        container.html('<div class="ai-wbr-token-empty">暂无记忆节点。生成回复后会自动整理，或点击“立即整理本轮”。</div>');
+        container.html(`
+            <div class="ai-wbr-memory-graph-toolbar">
+                <div class="ai-wbr-memory-graph-row">
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
+                    <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
+                </div>
+                <div class="ai-wbr-memory-graph-row">
+                    <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
+                    <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
+                </div>
+                ${renderMemoryGraphTypeFilters(graph)}
+                <div class="ai-wbr-memory-graph-summary">显示 0/${displayModel.totalNodes} 节点，0/${displayModel.totalLinks} 关系</div>
+            </div>
+            <div class="ai-wbr-token-empty">暂无可显示的记忆节点。可以清除搜索/类型筛选，或生成回复后让记忆图谱继续整理。</div>
+        `);
+        bindMemoryGraphSvgInteractions();
         return;
     }
 
@@ -6212,7 +6388,7 @@ function renderMemoryGraphSvg(graph) {
     const width = viewport.layoutWidth;
     const height = viewport.layoutHeight;
     const positions = new Map();
-    let layoutChanged = normalizeMemoryGraphLayout(nodes, graph.links, width, height);
+    let layoutChanged = normalizeMemoryGraphLayout(nodes, displayModel.links, width, height);
     nodes.forEach((node) => {
         positions.set(node.id, {
             x: Number(node.x || 0),
@@ -6224,8 +6400,7 @@ function renderMemoryGraphSvg(graph) {
         saveMemoryGraph(graph, getContext(), true);
     }
 
-    const visibleIds = new Set(nodes.map(node => node.id));
-    const edges = graph.links.filter(link => visibleIds.has(link.source) && visibleIds.has(link.target)).slice(-32);
+    const edges = displayModel.links;
     const pairBuckets = new Map();
     edges.forEach((link) => {
         const pairKey = [String(link.source || ''), String(link.target || '')].sort().join('||');
@@ -6270,8 +6445,9 @@ function renderMemoryGraphSvg(graph) {
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rawType, rawType);
         const subtitle = node.summary || node.content || '';
         const selectedClass = String(node.id) === String(memoryGraphSelectedNodeId) ? ' ai-wbr-memory-node-selected' : '';
+        const searchClass = displayModel.query && getMemoryGraphSearchHaystack(node).includes(displayModel.query) ? ' ai-wbr-memory-node-search-hit' : '';
         const importanceLabel = `${Math.round(clampNumber(node.importance, 0.5, 0, 1) * 100)}%`;
-        return `<g class="ai-wbr-memory-node ${colorClass}${selectedClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
+        return `<g class="ai-wbr-memory-node ${colorClass}${selectedClass}${searchClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
             <rect class="ai-wbr-memory-node-card" x="0" y="0" width="${MEMORY_GRAPH_NODE_WIDTH}" height="${MEMORY_GRAPH_NODE_HEIGHT}" rx="14" ry="14"></rect>
             <circle class="ai-wbr-memory-node-accent" cx="16" cy="16" r="4"></circle>
             <text class="ai-wbr-memory-node-title" x="28" y="21">${escapeHtml(truncateText(node.title || node.id, 20))}</text>
@@ -6298,6 +6474,18 @@ function renderMemoryGraphSvg(graph) {
 
     container.html(`
         <div class="ai-wbr-memory-graph-toolbar">
+            <div class="ai-wbr-memory-graph-row">
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
+                <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
+            </div>
+            <div class="ai-wbr-memory-graph-row">
+                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
+                <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
+            </div>
+            ${renderMemoryGraphTypeFilters(graph)}
+            <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
             <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
             <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
             <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
@@ -6673,7 +6861,7 @@ function fitMemoryGraphToContainer(graph = getMemoryGraph()) {
     if (!container.length) {
         return;
     }
-    const nodes = Array.isArray(graph?.nodes) ? graph.nodes.slice(0, 18) : [];
+    const nodes = buildMemoryGraphDisplayModel(graph).nodes;
     fitMemoryGraphToNodes(nodes, container[0]);
 }
 
@@ -6982,13 +7170,84 @@ function showMemoryNodePopover(nodeId, clientX, clientY) {
 
 function bindMemoryGraphSvgInteractions() {
     const container = $('#ai_wbr_memory_graph');
+    container.off('.memoryGraphSvg');
+    $(document).off('.memoryGraphSvg');
+
+    const renderCurrentGraph = (options = {}) => {
+        const graph = getMemoryGraph();
+        if (options.fit) {
+            fitMemoryGraphToNodes(buildMemoryGraphDisplayModel(graph).nodes, container[0]);
+        }
+        renderMemoryGraphSvg(graph);
+    };
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-mode', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const mode = String($(this).data('memoryGraphMode') || 'overview');
+        if (mode === 'focus' && !memoryGraphSelectedNodeId) {
+            return;
+        }
+        memoryGraphDisplayMode = mode;
+        renderCurrentGraph({ fit: true });
+    });
+
+    container.on('input.memoryGraphSvg', '.ai-wbr-memory-graph-search', function (event) {
+        event.stopPropagation();
+        const value = String($(this).val() || '');
+        clearTimeout(memoryGraphSearchTimer);
+        memoryGraphSearchTimer = setTimeout(() => {
+            memoryGraphSearchText = value;
+            renderCurrentGraph({ fit: true });
+        }, 180);
+    });
+
+    container.on('input.memoryGraphSvg', '.ai-wbr-memory-link-weight', function (event) {
+        event.stopPropagation();
+        memoryGraphMinLinkWeight = clampNumber($(this).val(), 0.35, 0, 1);
+        renderCurrentGraph();
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-type-filter', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const type = String($(this).data('memoryNodeType') || '');
+        if (!type) {
+            return;
+        }
+        const graph = getMemoryGraph();
+        const allTypes = [...new Set((Array.isArray(graph?.nodes) ? graph.nodes : []).map(node => String(node?.type || 'event')))];
+        if (!(memoryGraphVisibleTypes instanceof Set)) {
+            memoryGraphVisibleTypes = new Set();
+        }
+        if (memoryGraphVisibleTypes.size === 0) {
+            memoryGraphVisibleTypes = new Set(allTypes.filter(item => item !== type));
+        } else if (memoryGraphVisibleTypes.has(type)) {
+            memoryGraphVisibleTypes.delete(type);
+        } else {
+            memoryGraphVisibleTypes.add(type);
+        }
+        if (memoryGraphVisibleTypes.size >= allTypes.length) {
+            memoryGraphVisibleTypes.clear();
+        }
+        renderCurrentGraph({ fit: true });
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-clear-filters', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        memoryGraphDisplayMode = 'overview';
+        memoryGraphMinLinkWeight = 0.35;
+        memoryGraphSearchText = '';
+        clearTimeout(memoryGraphSearchTimer);
+        memoryGraphVisibleTypes.clear();
+        renderCurrentGraph({ fit: true });
+    });
+
     const svg = container.find('svg')[0];
     if (!svg) {
         return;
     }
-
-    container.off('.memoryGraphSvg');
-    $(document).off('.memoryGraphSvg');
 
     container.on('wheel.memoryGraphSvg', 'svg', function (event) {
         event.preventDefault();
@@ -7021,8 +7280,7 @@ function bindMemoryGraphSvgInteractions() {
     });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-reset', () => {
-        const viewport = getMemoryGraphViewportMetrics(container[0]);
-        memoryGraphView = { x: 0, y: 0, width: viewport.baseWidth, height: viewport.baseHeight };
+        fitMemoryGraphToNodes(buildMemoryGraphDisplayModel(getMemoryGraph()).nodes, container[0]);
         updateMemoryGraphViewBox(svg);
     });
 
