@@ -3700,6 +3700,57 @@ function sanitizeMemoryUpdateForApply(update) {
     return sanitized;
 }
 
+function memoryUpdateHasVisibleContent(update) {
+    if (!update || typeof update !== 'object') {
+        return false;
+    }
+    if (Array.isArray(update.nodes) && update.nodes.length) return true;
+    if (Array.isArray(update.updates) && update.updates.length) return true;
+    if (String(update.summary || '').trim()) return true;
+    const state = update.state && typeof update.state === 'object' ? update.state : {};
+    return Object.values(state).some((value) => {
+        if (Array.isArray(value)) return value.length > 0;
+        if (value && typeof value === 'object') return Object.keys(value).length > 0;
+        return String(value || '').trim();
+    });
+}
+
+function createMemoryFallbackSummaryFromMessages(messages, mode = 'realtime') {
+    const usefulMessages = (Array.isArray(messages) ? messages : [])
+        .map(message => sanitizeMemoryMessageText(message?.text || message?.mes || ''))
+        .filter(Boolean)
+        .slice(-4);
+    if (!usefulMessages.length) {
+        return '';
+    }
+    const label = mode === 'summary' || mode === 'history' ? '阶段整理' : '实时整理';
+    return truncateText(`${label}: ${usefulMessages.map(text => truncateText(text, 180)).join('\n')}`, 900);
+}
+
+function ensureMemoryUpdateHasVisibleFallback(update, messages, mode = 'realtime') {
+    if (memoryUpdateHasVisibleContent(update)) {
+        return update;
+    }
+    const summary = createMemoryFallbackSummaryFromMessages(messages, mode);
+    if (!summary) {
+        return update;
+    }
+    return {
+        ...(update && typeof update === 'object' ? update : {}),
+        summary,
+        nodes: [{
+            id: `event_${Date.now().toString(36)}`,
+            title: mode === 'summary' || mode === 'history' ? '阶段剧情整理' : '最新剧情进展',
+            type: 'event',
+            summary: truncateText(summary, 160),
+            content: summary,
+            tags: ['auto_memory'],
+            importance: 0.55,
+            credibility: 0.75,
+        }],
+    };
+}
+
 function createMemoryFallbackNodeFromSummary(summary, fallbackIndex = 0) {
     const text = String(summary || '').trim();
     if (normalizeText(text).length < 8) return null;
@@ -4156,7 +4207,7 @@ function parseMemoryUpdate(rawResponse, prompt = '') {
             links: readJsonValue('memory_links_json', []),
             remove_node_ids: readJsonValue('memory_remove_node_ids_json', []),
             remove_link_ids: readJsonValue('memory_remove_link_ids_json', []),
-            summary: readJsonValue('memory_summary_json', ''),
+            summary: readJsonValue('memory_summary_json', readJsonValue('memory_last_summary_json', '')),
         };
     };
 
@@ -4525,7 +4576,8 @@ async function runHistoryMemoryImport() {
             }
 
             try {
-                const update = parseMemoryUpdate(raw, promptLog);
+                let update = parseMemoryUpdate(raw, promptLog);
+                update = ensureMemoryUpdateHasVisibleFallback(update, recentMessages, mode);
                 setCurrentMemoryLastError('', context);
                 if (getCurrentChatMemoryKey() !== memoryRunChatKey) {
                     debugLog('Discarded history memory import because chat changed before completion', {
@@ -4699,7 +4751,8 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
             }
 
             try {
-                const update = parseMemoryUpdate(raw, promptLog);
+                let update = parseMemoryUpdate(raw, promptLog);
+                update = ensureMemoryUpdateHasVisibleFallback(update, recentMessages, mode);
                 setCurrentMemoryLastError('', context);
                 if (getCurrentChatMemoryKey() !== memoryRunChatKey) {
                     debugLog('Discarded memory update because chat changed before completion', {
