@@ -3116,7 +3116,6 @@ function getLegacyChatMemoryKeys(context = getContext()) {
         }
     }
 
-    add('chat:default');
     return keys;
 }
 
@@ -3327,20 +3326,6 @@ function getChatMemoryContainer(context = getContext()) {
         saveSettingsDebounced();
         memoryScopeDebugLog('getChatMemoryContainer migrated from legacy graph map', {
             legacyKey,
-            currentChatKey,
-            graph: getMemoryGraphSummary(migrated.graph),
-        }, context);
-        return migrated;
-    }
-
-    if (hasUsefulMemoryGraph(settings.memoryGraph)) {
-        const migrated = normalizeChatMemoryContainer({ graph: settings.memoryGraph, chatKey: currentChatKey });
-        migrated.migratedAt = new Date().toISOString();
-        migrated.migratedFrom = 'memoryGraph';
-        settings.memoryContainersByChat[currentChatKey] = migrated;
-        Object.assign(extension_settings[MODULE_NAME], settings);
-        saveSettingsDebounced();
-        memoryScopeDebugLog('getChatMemoryContainer migrated from global memoryGraph fallback', {
             currentChatKey,
             graph: getMemoryGraphSummary(migrated.graph),
         }, context);
