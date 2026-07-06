@@ -1461,9 +1461,9 @@
     stroke-width: 3.2;
     stroke-linecap: round;
     stroke-linejoin: round;
-    filter: drop-shadow(0 0 7px rgba(80, 180, 255, 0.22));
     cursor: pointer;
     pointer-events: stroke;
+    vector-effect: non-scaling-stroke;
 }
 
 .ai-wbr-memory-arrow {
@@ -1509,50 +1509,37 @@
 .ai-wbr-memory-edge-selected {
     stroke: rgba(183, 131, 255, 0.98);
     stroke-width: 4.8;
-    filter: drop-shadow(0 0 12px rgba(183, 131, 255, 0.3));
 }
 
 .ai-wbr-memory-node {
     cursor: pointer;
     --memory-node-accent: #66e0ff;
     --memory-node-accent-soft: rgba(102, 224, 255, 0.18);
+    will-change: transform;
 }
 
 .ai-wbr-memory-node-card {
     fill: rgba(15, 22, 38, 0.92);
     stroke: rgba(104, 207, 255, 0.62);
     stroke-width: 1.5;
-    filter:
-        drop-shadow(0 10px 18px rgba(0, 0, 0, 0.28))
-        drop-shadow(0 0 10px rgba(92, 182, 255, 0.15));
 }
 
 .ai-wbr-memory-node:hover .ai-wbr-memory-node-card {
     stroke: rgba(255, 255, 255, 0.95);
-    filter:
-        drop-shadow(0 14px 24px rgba(0, 0, 0, 0.34))
-        drop-shadow(0 0 16px rgba(119, 224, 255, 0.22));
 }
 
 .ai-wbr-memory-node-selected .ai-wbr-memory-node-card {
     stroke: rgba(255, 255, 255, 0.98);
     stroke-width: 2.4;
-    filter:
-        drop-shadow(0 18px 28px rgba(0, 0, 0, 0.42))
-        drop-shadow(0 0 18px rgba(125, 212, 255, 0.32));
 }
 
 .ai-wbr-memory-node-search-hit .ai-wbr-memory-node-card {
     stroke: rgba(255, 232, 140, 0.98);
     stroke-width: 2.2;
-    filter:
-        drop-shadow(0 14px 24px rgba(0, 0, 0, 0.34))
-        drop-shadow(0 0 16px rgba(255, 220, 120, 0.32));
 }
 
 .ai-wbr-memory-node .ai-wbr-memory-node-accent {
     fill: var(--memory-node-accent);
-    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--memory-node-accent) 55%, transparent 45%));
 }
 
 .ai-wbr-memory-node-location {

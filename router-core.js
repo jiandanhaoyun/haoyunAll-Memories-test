@@ -224,6 +224,9 @@ let memoryGraphMinLinkWeight = 0.35;
 let memoryGraphSearchText = '';
 let memoryGraphVisibleTypes = new Set();
 let memoryGraphSearchTimer = null;
+let memoryGraphRenderFrame = null;
+let memoryGraphPreviewRenderKey = '';
+let memoryGraphDragFrame = null;
 let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
 let bookshelfLastTestResults = [];
@@ -6275,6 +6278,27 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
     if (!panel.length) {
         return;
     }
+    const shell = panel.closest('.ai-wbr-graph-shell');
+    const isOpen = shell.hasClass('preview-open');
+    const selectedId = String(memoryGraphSelectedNodeId || '');
+    const renderKey = [
+        isOpen ? 'open' : 'closed',
+        displayModel?.mode || '',
+        displayModel?.query || '',
+        selectedId,
+        (displayModel?.nodes || []).map(node => `${node.id}:${node.updatedAt || ''}`).join('|'),
+    ].join('::');
+    if (!isOpen && panel.children().length && memoryGraphPreviewRenderKey === renderKey) {
+        return;
+    }
+    if (!isOpen && panel.children().length) {
+        memoryGraphPreviewRenderKey = renderKey;
+        return;
+    }
+    if (memoryGraphPreviewRenderKey === renderKey) {
+        return;
+    }
+    memoryGraphPreviewRenderKey = renderKey;
 
     const nodes = Array.isArray(displayModel?.nodes) ? displayModel.nodes : [];
     const links = Array.isArray(displayModel?.links) ? displayModel.links : [];
@@ -7497,11 +7521,17 @@ function bindMemoryGraphSvgInteractions() {
     $(document).off('.memoryGraphSvg');
 
     const renderCurrentGraph = (options = {}) => {
-        const graph = getMemoryGraph();
-        if (options.fit) {
-            fitMemoryGraphToNodes(buildMemoryGraphDisplayModel(graph).nodes, container[0]);
+        if (memoryGraphRenderFrame) {
+            cancelAnimationFrame(memoryGraphRenderFrame);
         }
-        renderMemoryGraphSvg(graph);
+        memoryGraphRenderFrame = requestAnimationFrame(() => {
+            memoryGraphRenderFrame = null;
+            const graph = getMemoryGraph();
+            if (options.fit) {
+                fitMemoryGraphToNodes(buildMemoryGraphDisplayModel(graph).nodes, container[0]);
+            }
+            renderMemoryGraphSvg(graph);
+        });
     };
 
     previewPanel.on('input.memoryGraphPreview', '.ai-wbr-memory-preview-search', function (event) {
@@ -7565,7 +7595,8 @@ function bindMemoryGraphSvgInteractions() {
     container.on('input.memoryGraphSvg', '.ai-wbr-memory-link-weight', function (event) {
         event.stopPropagation();
         memoryGraphMinLinkWeight = clampNumber($(this).val(), 0.35, 0, 1);
-        renderCurrentGraph();
+        clearTimeout(memoryGraphSearchTimer);
+        memoryGraphSearchTimer = setTimeout(() => renderCurrentGraph(), 120);
     });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-type-filter', function (event) {
@@ -7720,6 +7751,8 @@ function bindMemoryGraphSvgInteractions() {
         .on('click.memoryGraphShellToggles', '#ai_wbr_memory_graph_preview_toggle', function (event) {
             event.preventDefault();
             $('#ai_wbr_memory_preview_panel').closest('.ai-wbr-graph-shell').toggleClass('preview-open');
+            memoryGraphPreviewRenderKey = '';
+            renderMemoryGraphSvg(getMemoryGraph());
         });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
@@ -7787,20 +7820,31 @@ function bindMemoryGraphSvgInteractions() {
         }
         
         const clamped = clampMemoryNodePositionToView(memoryGraphDrag.nodeX + dx, memoryGraphDrag.nodeY + dy);
-        memoryGraphDrag.nodePositions.set(memoryGraphDrag.nodeId, { x: clamped.x, y: clamped.y });
-        
-        const group = container.find(`.ai-wbr-memory-node[data-memory-node-id="${escapeCssSelector(memoryGraphDrag.nodeId)}"]`);
-        group.attr('transform', `translate(${clamped.x},${clamped.y})`);
-        
-        memoryGraphDrag.links.forEach((link) => {
-            const line = container.find(`[data-memory-link-id="${escapeCssSelector(String(link.id || ''))}"]`);
-            const source = memoryGraphDrag.nodePositions.get(link.source);
-            const target = memoryGraphDrag.nodePositions.get(link.target);
-            const laneOffset = memoryGraphDrag.linkOffsets.get(link.id) || 0;
-            if (source && target) {
-                line.attr('d', buildMemoryEdgePath(source, target, laneOffset));
-            }
-        });
+        memoryGraphDrag.pendingPosition = clamped;
+        if (!memoryGraphDragFrame) {
+            memoryGraphDragFrame = requestAnimationFrame(() => {
+                memoryGraphDragFrame = null;
+                if (!memoryGraphDrag?.pendingPosition) {
+                    return;
+                }
+                const next = memoryGraphDrag.pendingPosition;
+                memoryGraphDrag.pendingPosition = null;
+                memoryGraphDrag.nodePositions.set(memoryGraphDrag.nodeId, { x: next.x, y: next.y });
+
+                const group = container.find(`.ai-wbr-memory-node[data-memory-node-id="${escapeCssSelector(memoryGraphDrag.nodeId)}"]`);
+                group.attr('transform', `translate(${next.x},${next.y})`);
+
+                memoryGraphDrag.links.forEach((link) => {
+                    const line = container.find(`[data-memory-link-id="${escapeCssSelector(String(link.id || ''))}"]`);
+                    const source = memoryGraphDrag.nodePositions.get(link.source);
+                    const target = memoryGraphDrag.nodePositions.get(link.target);
+                    const laneOffset = memoryGraphDrag.linkOffsets.get(link.id) || 0;
+                    if (source && target) {
+                        line.attr('d', buildMemoryEdgePath(source, target, laneOffset));
+                    }
+                });
+            });
+        }
         event.preventDefault();
     });
 
@@ -7824,6 +7868,10 @@ function bindMemoryGraphSvgInteractions() {
         }
         const drag = memoryGraphDrag;
         memoryGraphDrag = null;
+        if (memoryGraphDragFrame) {
+            cancelAnimationFrame(memoryGraphDragFrame);
+            memoryGraphDragFrame = null;
+        }
         const graph = getMemoryGraph();
         const node = graph.nodes.find(item => item.id === drag.nodeId);
         if (node) {
