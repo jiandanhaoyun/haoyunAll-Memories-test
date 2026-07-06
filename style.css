@@ -849,6 +849,16 @@
     height: 100%;
 }
 
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen .ai-wbr-memory-graph-canvas {
+    display: grid;
+    place-items: center;
+}
+
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen .ai-wbr-memory-graph-canvas svg {
+    width: 100%;
+    height: 100%;
+}
+
 .ai-wbr-graph-topbar {
     display: flex;
     align-items: center;

@@ -45,6 +45,7 @@ const MEMORY_GRAPH_SAFE_PADDING = 12;
 const MEMORY_GRAPH_TOP_SAFE_PADDING = 56;
 const MEMORY_GRAPH_LAYOUT_PADDING = 96;
 const MEMORY_GRAPH_TOUCH_TAP_THRESHOLD = 8;
+const MEMORY_GRAPH_LONG_PRESS_MS = 520;
 const MEMORY_NODE_TYPE_OPTIONS = [
     { value: 'event', label: '\u4e8b\u4ef6' },
     { value: 'character', label: '\u89d2\u8272' },
@@ -228,6 +229,7 @@ let memoryGraphRenderFrame = null;
 let memoryGraphPreviewRenderKey = '';
 let memoryGraphDragFrame = null;
 let memoryGraphFullscreenActive = false;
+let memoryGraphSuppressNextNodeClick = false;
 let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
 let bookshelfLastTestResults = [];
@@ -6665,7 +6667,9 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
         return;
     }
 
-    const selectedNode = graph.nodes.find(node => node.id === memoryGraphSelectedNodeId);
+    const selectedNode = memoryGraphDetailMode === 'node'
+        ? graph.nodes.find(node => node.id === memoryGraphSelectedNodeId)
+        : null;
     if (selectedNode) {
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, selectedNode.type, selectedNode.type || 'event');
         const relatedLinks = graph.links.filter(link => link.source === selectedNode.id || link.target === selectedNode.id);
@@ -7205,13 +7209,15 @@ function fitMemoryGraphToNodes(nodes, containerEl) {
         viewHeight = viewWidth / viewport.aspect;
     }
 
+    viewWidth = Math.min(1600, Math.max(260, viewWidth));
+    viewHeight = Math.min(1400, Math.max(180, viewHeight));
     const centerX = bounds.x + bounds.width / 2;
     const centerY = bounds.y + bounds.height / 2;
     memoryGraphView = {
         x: centerX - viewWidth / 2,
         y: centerY - viewHeight / 2,
-        width: Math.min(1600, Math.max(260, viewWidth)),
-        height: Math.min(1400, Math.max(180, viewHeight)),
+        width: viewWidth,
+        height: viewHeight,
     };
 }
 
@@ -7729,6 +7735,19 @@ function bindMemoryGraphSvgInteractions() {
             linkOffsets.set(link.id, siblings.length > 1 ? offsetIndex * 18 : 0);
         });
 
+        const longPressTimer = setTimeout(() => {
+            if (!memoryGraphDrag || memoryGraphDrag.nodeId !== nodeId || memoryGraphDrag.moved) {
+                return;
+            }
+            memoryGraphDrag.longPressed = true;
+            memoryGraphSuppressNextNodeClick = true;
+            memoryGraphSelectedNodeId = nodeId;
+            memoryGraphSelectedLinkId = '';
+            memoryGraphDetailMode = 'node';
+            renderMemoryDetailDrawer(getMemoryGraph());
+            $('#ai_wbr_memory_node_popover').hide();
+        }, MEMORY_GRAPH_LONG_PRESS_MS);
+
         memoryGraphDrag = {
             nodeId,
             startX: start.x,
@@ -7736,6 +7755,8 @@ function bindMemoryGraphSvgInteractions() {
             nodeX: Number.isFinite(transform?.x) ? transform.x : Number(node.x || 0),
             nodeY: Number.isFinite(transform?.y) ? transform.y : Number(node.y || 0),
             moved: false,
+            longPressed: false,
+            longPressTimer,
             nodePositions,
             linkOffsets,
             links: edges.filter(link => link.source === nodeId || link.target === nodeId),
@@ -7749,13 +7770,17 @@ function bindMemoryGraphSvgInteractions() {
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-node', function (event) {
         event.preventDefault();
         event.stopPropagation();
+        if (memoryGraphSuppressNextNodeClick) {
+            memoryGraphSuppressNextNodeClick = false;
+            return;
+        }
         const nodeId = String($(this).data('memoryNodeId') || '');
         if (!nodeId) {
             return;
         }
         memoryGraphSelectedNodeId = nodeId;
         memoryGraphSelectedLinkId = '';
-        memoryGraphDetailMode = 'node';
+        memoryGraphDetailMode = '';
         memoryGraphDisplayMode = 'focus';
         renderMemoryPanel('graph');
         $('#ai_wbr_memory_node_popover').hide();
@@ -7831,6 +7856,10 @@ function bindMemoryGraphSvgInteractions() {
         const dy = point.y - memoryGraphDrag.startY;
         if (Math.abs(dx) + Math.abs(dy) > MEMORY_GRAPH_TOUCH_TAP_THRESHOLD) {
             memoryGraphDrag.moved = true;
+            if (memoryGraphDrag.longPressTimer) {
+                clearTimeout(memoryGraphDrag.longPressTimer);
+                memoryGraphDrag.longPressTimer = null;
+            }
         }
         
         const clamped = clampMemoryNodePositionToView(memoryGraphDrag.nodeX + dx, memoryGraphDrag.nodeY + dy);
@@ -7882,6 +7911,9 @@ function bindMemoryGraphSvgInteractions() {
         }
         const drag = memoryGraphDrag;
         memoryGraphDrag = null;
+        if (drag.longPressTimer) {
+            clearTimeout(drag.longPressTimer);
+        }
         if (memoryGraphDragFrame) {
             cancelAnimationFrame(memoryGraphDragFrame);
             memoryGraphDragFrame = null;
@@ -7901,12 +7933,15 @@ function bindMemoryGraphSvgInteractions() {
         saveMemoryGraph(graph, getContext(), true);
         lastObservedChatScopedUiSignature = getChatScopedUiSignature();
 
-        if (!drag.moved) {
+        if (!drag.moved && !drag.longPressed) {
             memoryGraphSelectedNodeId = drag.nodeId;
             memoryGraphSelectedLinkId = '';
-            memoryGraphDetailMode = 'node';
+            memoryGraphDetailMode = '';
+            memoryGraphDisplayMode = 'focus';
             renderMemoryPanel('graph');
             $('#ai_wbr_memory_node_popover').hide();
+        } else if (drag.longPressed) {
+            renderMemoryDetailDrawer(getMemoryGraph());
         } else {
             $('#ai_wbr_memory_json').val(JSON.stringify(graph, null, 2));
         }
