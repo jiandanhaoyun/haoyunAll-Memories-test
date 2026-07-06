@@ -6164,7 +6164,9 @@ function buildMemoryGraphDisplayModel(graph) {
             }
         }
         candidateIds = matchedIds;
-        mode = 'search';
+        if (mode !== 'timeline') {
+            mode = 'search';
+        }
     } else if (mode === 'focus') {
         candidateIds = new Set([selectedNodeId]);
         for (const link of allLinks) {
@@ -6179,7 +6181,7 @@ function buildMemoryGraphDisplayModel(graph) {
         }
     }
 
-    const nodeLimit = mode === 'full' ? 120 : mode === 'focus' ? 54 : mode === 'search' ? 72 : 36;
+    const nodeLimit = mode === 'full' ? 120 : mode === 'timeline' ? 120 : mode === 'focus' ? 54 : mode === 'search' ? 72 : 36;
     const visibleNodes = typeFilteredNodes
         .filter(node => candidateIds.has(String(node.id)))
         .map((node, index) => ({
@@ -6191,7 +6193,7 @@ function buildMemoryGraphDisplayModel(graph) {
         .map(item => item.node);
     const visibleIds = new Set(visibleNodes.map(node => String(node.id)));
 
-    const linkLimit = mode === 'full' ? 180 : mode === 'overview' ? 80 : 140;
+    const linkLimit = mode === 'full' ? 180 : mode === 'overview' ? 80 : mode === 'timeline' ? 80 : 140;
     const visibleLinks = allLinks
         .filter((link) => {
             const source = String(link?.source || '');
@@ -6416,6 +6418,147 @@ function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) 
     return true;
 }
 
+function isMemoryTimelineNode(node) {
+    const type = String(node?.type || '').toLowerCase();
+    return type === 'event' || type === 'quest' || !!node?.timeSpan;
+}
+
+function getMemoryTimelineGroupLabel(node) {
+    const raw = String(node?.timeSpan || '').trim();
+    if (raw) {
+        return raw;
+    }
+    const dateText = String(node?.updatedAt || node?.createdAt || '').slice(0, 10);
+    return dateText || '未标记时间';
+}
+
+function getMemoryTimelineSortValue(node, index = 0) {
+    const timeText = String(node?.timeSpan || '').trim();
+    const explicitNumber = Number(timeText.match(/\d+/)?.[0] || NaN);
+    if (Number.isFinite(explicitNumber)) {
+        return explicitNumber * 100000 + index;
+    }
+    const timestamp = Date.parse(node?.updatedAt || node?.createdAt || '');
+    return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER - index;
+}
+
+function getMemoryTimelineRelatedNodes(graph, node, typeNames = []) {
+    const wanted = new Set(typeNames.map(type => String(type).toLowerCase()));
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const links = Array.isArray(graph?.links) ? graph.links : [];
+    const nodeById = new Map(nodes.map(item => [String(item.id), item]));
+    const related = [];
+    for (const link of links) {
+        const source = String(link?.source || '');
+        const target = String(link?.target || '');
+        const otherId = source === String(node.id) ? target : target === String(node.id) ? source : '';
+        if (!otherId) {
+            continue;
+        }
+        const other = nodeById.get(otherId);
+        if (!other) {
+            continue;
+        }
+        if (!wanted.size || wanted.has(String(other.type || '').toLowerCase())) {
+            related.push(other);
+        }
+    }
+    return related;
+}
+
+function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
+    return `
+        <div class="ai-wbr-memory-graph-toolbar">
+            <div class="ai-wbr-memory-graph-row">
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'timeline' ? 'active' : ''}" type="button" data-memory-graph-mode="timeline">时间线</button>
+                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
+                <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
+            </div>
+            <div class="ai-wbr-memory-graph-row">
+                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
+                <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
+            </div>
+            ${renderMemoryGraphTypeFilters(graph)}
+            <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
+            <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
+            <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
+            <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
+            <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
+        </div>
+    `;
+}
+
+function renderMemoryTimelineView(graph, displayModel) {
+    const container = $('#ai_wbr_memory_graph');
+    const nodes = Array.isArray(displayModel?.nodes) ? displayModel.nodes : [];
+    const eventNodes = nodes
+        .filter(isMemoryTimelineNode)
+        .map((node, index) => ({ node, index, sortValue: getMemoryTimelineSortValue(node, index) }))
+        .sort((a, b) => a.sortValue - b.sortValue || a.index - b.index)
+        .map(item => item.node);
+    const edges = Array.isArray(displayModel?.links) ? displayModel.links : [];
+    const grouped = new Map();
+    for (const node of eventNodes) {
+        const label = getMemoryTimelineGroupLabel(node);
+        if (!grouped.has(label)) {
+            grouped.set(label, []);
+        }
+        grouped.get(label).push(node);
+    }
+
+    const groupsHtml = eventNodes.length
+        ? [...grouped.entries()].map(([label, items]) => `
+            <section class="ai-wbr-memory-timeline-group">
+                <div class="ai-wbr-memory-timeline-group-title">${escapeHtml(label)} <span>${items.length}</span></div>
+                <div class="ai-wbr-memory-timeline-items">
+                    ${items.map((node) => {
+                        const people = getMemoryTimelineRelatedNodes(graph, node, ['character']).slice(0, 4);
+                        const locations = getMemoryTimelineRelatedNodes(graph, node, ['location']).slice(0, 2);
+                        const settings = getMemoryTimelineRelatedNodes(graph, node, ['item', 'concept', 'rule', 'faction']).slice(0, 4);
+                        const selected = String(node.id) === String(memoryGraphSelectedNodeId);
+                        const chips = [
+                            ...people.map(item => `人物：${item.title || item.id}`),
+                            ...locations.map(item => `地点：${item.title || item.id}`),
+                            ...settings.map(item => getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, item.type, item.type || '设定') + `：${item.title || item.id}`),
+                        ].slice(0, 6);
+                        return `
+                            <button class="ai-wbr-memory-timeline-card${selected ? ' selected' : ''}" type="button" data-memory-node-id="${escapeHtml(node.id)}">
+                                <span class="ai-wbr-memory-timeline-dot"></span>
+                                <span class="ai-wbr-memory-timeline-card-body">
+                                    <b>${escapeHtml(node.title || node.id)}</b>
+                                    <small>${escapeHtml(truncateText(node.summary || node.content || '暂无摘要', 160))}</small>
+                                    <span class="ai-wbr-memory-timeline-meta">
+                                        ${escapeHtml(node.location || locations[0]?.title || '地点未标记')}
+                                        ${node.updatedAt ? ` · ${escapeHtml(String(node.updatedAt).slice(0, 10))}` : ''}
+                                    </span>
+                                    ${chips.length ? `<span class="ai-wbr-memory-timeline-chips">${chips.map(chip => `<i>${escapeHtml(chip)}</i>`).join('')}</span>` : ''}
+                                </span>
+                            </button>
+                        `;
+                    }).join('')}
+                </div>
+            </section>
+        `).join('')
+        : '<div class="ai-wbr-token-empty ai-wbr-memory-timeline-empty">暂无事件时间线。事件/任务节点，或带有时间字段的记忆，会显示在这里。</div>';
+
+    container.html(`
+        ${renderMemoryGraphToolbarHtml(graph, displayModel, eventNodes, edges)}
+        <div class="ai-wbr-memory-timeline-view">
+            <div class="ai-wbr-memory-timeline-head">
+                <div>
+                    <div class="ai-wbr-memory-detail-kicker">Timeline</div>
+                    <h3>剧情时间线</h3>
+                </div>
+                <small>按时间、章节或更新时间排列事件节点</small>
+            </div>
+            <div class="ai-wbr-memory-timeline-rail">${groupsHtml}</div>
+        </div>
+    `);
+    bindMemoryGraphSvgInteractions();
+}
+
 function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
     const drawer = $('#ai_wbr_memory_detail_drawer');
     if (!drawer.length) {
@@ -6531,6 +6674,10 @@ function renderMemoryGraphSvg(graph) {
 
     const displayModel = buildMemoryGraphDisplayModel(graph);
     renderMemoryPreviewPanel(graph, displayModel);
+    if (displayModel.mode === 'timeline') {
+        renderMemoryTimelineView(graph, displayModel);
+        return;
+    }
     const nodes = displayModel.nodes;
     if (!nodes.length) {
         container.html(`
@@ -7378,6 +7525,19 @@ function bindMemoryGraphSvgInteractions() {
         memoryGraphDetailMode = 'node';
         memoryGraphDisplayMode = 'focus';
         previewPanel.closest('.ai-wbr-graph-shell').removeClass('preview-open');
+        renderMemoryPanel('graph');
+    });
+
+    container.on('click.memoryGraphSvg', '.ai-wbr-memory-timeline-card', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const nodeId = String($(this).data('memoryNodeId') || '');
+        if (!nodeId) {
+            return;
+        }
+        memoryGraphSelectedNodeId = nodeId;
+        memoryGraphSelectedLinkId = '';
+        memoryGraphDetailMode = 'node';
         renderMemoryPanel('graph');
     });
 
