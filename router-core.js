@@ -5857,7 +5857,7 @@ function parkStandalonePanels() {
         $('body').append(parking);
     }
     ensureBookshelfStandaloneSection();
-    $('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_wbr_bookshelf_section, #ai_worldbook_router_settings').detach().appendTo(parking);
+    $('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_wbr_bookshelf_section').detach().appendTo(parking);
 }
 
 function renderStandaloneOverview(container) {
@@ -6024,7 +6024,7 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
     } else if (tabId === 'debug') {
         renderStandaloneDebug(body);
     } else if (tabId === 'settings') {
-        body.append($('#ai_worldbook_router_settings'));
+        renderStandaloneModel(body);
     }
 
     const status = getStandaloneStatusMeta();
