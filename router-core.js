@@ -209,6 +209,7 @@ let isRouterSelectionRequest = false;
 let fetchFallbackInstalled = false;
 let lastRouteCompletedAt = 0;
 let isMemoryWorkerRunning = false;
+let memoryWorkerStartedAt = 0;
 let memoryUpdateTimer = null;
 let chatUiRefreshTimers = [];
 let chatScopedUiPollTimer = null;
@@ -4488,10 +4489,16 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         return false;
     }
     if (isMemoryWorkerRunning) {
-        setMemoryStatus('实时整理跳过：上一轮记忆整理仍在运行。');
-        return false;
+        const busyMs = Date.now() - Number(memoryWorkerStartedAt || 0);
+        if (!options.force || busyMs < 120000) {
+            setMemoryStatus('实时整理跳过：上一轮记忆整理仍在运行。');
+            return false;
+        }
+        console.warn(`${LOG_PREFIX} Reset stale memory worker lock`, { busyMs });
+        isMemoryWorkerRunning = false;
+        memoryWorkerStartedAt = 0;
     }
-    if (isRouterSelectionRequest) {
+    if (isRouterSelectionRequest && !options.force) {
         setMemoryStatus('实时整理跳过：路由请求正在使用模型。');
         return false;
     }
@@ -4518,11 +4525,13 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         mode,
         scanMessages,
     };
-    if (mode === 'realtime' && reason !== 'manual' && signature && signature === getCurrentMemoryLastTurnSignature(context)) {
+    if (mode === 'realtime' && reason !== 'manual' && !options.force && signature && signature === getCurrentMemoryLastTurnSignature(context)) {
+        setMemoryStatus('实时整理跳过：当前聊天图谱已是最新。');
         return false;
     }
 
     isMemoryWorkerRunning = true;
+    memoryWorkerStartedAt = Date.now();
     startMemoryAnimation();
     setMemoryStatus(mode === 'summary' ? '间隔归纳整理中...' : '实时记忆整理中...');
 
@@ -4673,6 +4682,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
         return false;
     } finally {
         isMemoryWorkerRunning = false;
+        memoryWorkerStartedAt = 0;
         renderMemoryPanel();
     }
 }
@@ -4700,9 +4710,11 @@ function scheduleMemoryGraphUpdate() {
     clearTimeout(memoryUpdateTimer);
     memoryUpdateTimer = setTimeout(async () => {
         if (shouldRunRealtime) {
+            const forceRealtime = String(getCurrentMemoryLastTurnSignature(context) || '') === '';
             await runMemoryGraphUpdate('realtime', {
                 mode: 'realtime',
                 scanMessages: settings.memoryRealtimeScanMessages,
+                force: forceRealtime,
             });
         }
         if (shouldRunSummary) {
@@ -6232,14 +6244,53 @@ function ensureBookshelfStandaloneSection() {
     return section;
 }
 
-function parkStandalonePanels() {
+function getSettingsContentContainer() {
+    return $('#ai_worldbook_router_settings .inline-drawer-content').first();
+}
+
+function restoreStandalonePanelsToSettings() {
+    const settingsContent = getSettingsContentContainer();
+    if (!settingsContent.length) return;
+
+    const memorySection = $('#ai_wbr_memory_section');
+    const graphSection = $('#ai_wbr_memory_graph_section');
+    const bookshelfSection = $('#ai_wbr_bookshelf_section');
+    const debugSection = settingsContent.find('.ai-wbr-debug').first();
+
+    if (memorySection.length && !settingsContent.find('#ai_wbr_memory_section').length) {
+        const routerSection = settingsContent.find('.ai-wbr-section')
+            .not('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_wbr_bookshelf_section')
+            .first();
+        if (routerSection.length) {
+            routerSection.after(memorySection.detach());
+        } else {
+            settingsContent.append(memorySection.detach());
+        }
+    }
+    if (graphSection.length && !settingsContent.find('#ai_wbr_memory_graph_section').length) {
+        if (debugSection.length) {
+            debugSection.before(graphSection.detach());
+        } else {
+            settingsContent.append(graphSection.detach());
+        }
+    }
+    if (bookshelfSection.length && !settingsContent.find('#ai_wbr_bookshelf_section').length) {
+        const targetMemorySection = settingsContent.find('#ai_wbr_memory_section');
+        if (targetMemorySection.length && !targetMemorySection.find('#ai_wbr_bookshelf_panel').length) {
+            targetMemorySection.append(bookshelfSection.detach());
+        }
+    }
+}
+
+function parkStandalonePanels(...selectors) {
     let parking = $('#ai_wbr_console_parking');
     if (!parking.length) {
         parking = $('<div id="ai_wbr_console_parking" class="ai-wbr-console-parking"></div>');
         $('body').append(parking);
     }
     ensureBookshelfStandaloneSection();
-    $('#ai_wbr_memory_section, #ai_wbr_memory_graph_section, #ai_wbr_bookshelf_section').detach().appendTo(parking);
+    const targetSelectors = selectors.length ? selectors : ['#ai_wbr_memory_section', '#ai_wbr_memory_graph_section', '#ai_wbr_bookshelf_section'];
+    $(targetSelectors.join(', ')).detach().appendTo(parking);
 }
 
 function renderStandaloneOverview(container) {
@@ -6378,7 +6429,7 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
         return;
     }
 
-    parkStandalonePanels();
+    restoreStandalonePanelsToSettings();
     const isGraphTab = tabId === 'graph';
     if (!isGraphTab && memoryGraphFullscreenActive) {
         setMemoryGraphFullscreen(false, { fit: false });
@@ -6396,9 +6447,11 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
     } else if (tabId === 'injection') {
         renderStandaloneInjection(body);
     } else if (tabId === 'memory') {
+        parkStandalonePanels('#ai_wbr_memory_section');
         body.append($('#ai_wbr_memory_section'));
         renderMemoryPanel('memory');
     } else if (tabId === 'graph') {
+        parkStandalonePanels('#ai_wbr_memory_graph_section');
         body.append($('#ai_wbr_memory_graph_section'));
         renderMemoryPanel('graph');
         requestAnimationFrame(() => {
@@ -6408,6 +6461,7 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
             }
         });
     } else if (tabId === 'bookshelf') {
+        parkStandalonePanels('#ai_wbr_bookshelf_section');
         body.append(ensureBookshelfStandaloneSection());
         syncBookshelfProviderVisibility();
         renderBookshelfPanel();
@@ -10165,7 +10219,7 @@ function createFloatingMemoryWindow() {
     '</div>');
 
     $('body').append(fab).append(win);
-    parkStandalonePanels();
+    restoreStandalonePanelsToSettings();
     updateFloatingButtonVisibility();
     clampFloatingFabToViewport();
 
@@ -10291,6 +10345,7 @@ function createFloatingMemoryWindow() {
             setMemoryGraphFullscreen(false, { fit: false });
         }
         win.removeClass('open').addClass('closing');
+        restoreStandalonePanelsToSettings();
         const node = win?.[0];
         if (node) {
             node.style.setProperty('visibility', 'hidden', 'important');
