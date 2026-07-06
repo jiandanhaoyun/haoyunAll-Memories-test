@@ -810,6 +810,45 @@
     min-height: 0;
 }
 
+.ai-wbr-memory-graph-fullscreen-open {
+    overflow: hidden !important;
+}
+
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483646 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background:
+        radial-gradient(circle at 50% 28%, rgba(92, 130, 255, 0.12), transparent 46%),
+        color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(8, 10, 18, 0.98)) 94%, #050914 6%) !important;
+    box-shadow: none !important;
+}
+
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen .ai-wbr-graph-topbar {
+    flex: 0 0 auto;
+    padding: 0.65rem 0.8rem;
+    background: rgba(8, 12, 22, 0.92);
+    backdrop-filter: blur(10px);
+}
+
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen .ai-wbr-graph-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.ai-wbr-graph-workspace.ai-wbr-memory-graph-fullscreen .ai-wbr-memory-graph {
+    min-height: 0;
+    height: 100%;
+}
+
 .ai-wbr-graph-topbar {
     display: flex;
     align-items: center;

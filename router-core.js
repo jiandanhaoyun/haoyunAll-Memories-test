@@ -227,6 +227,7 @@ let memoryGraphSearchTimer = null;
 let memoryGraphRenderFrame = null;
 let memoryGraphPreviewRenderKey = '';
 let memoryGraphDragFrame = null;
+let memoryGraphFullscreenActive = false;
 let bookshelfDbPromise = null;
 let selectedBookshelfBookId = '';
 let bookshelfLastTestResults = [];
@@ -6040,6 +6041,9 @@ function renderStandaloneConsole(tabId = getStandaloneTabId()) {
 
     parkStandalonePanels();
     const isGraphTab = tabId === 'graph';
+    if (!isGraphTab && memoryGraphFullscreenActive) {
+        setMemoryGraphFullscreen(false, { fit: false });
+    }
     $('#ai_wbr_floating_window').toggleClass('ai-wbr-floating-window-graph', isGraphTab);
     body.toggleClass('ai-wbr-console-body-graph', isGraphTab);
     $('#ai_wbr_console_tabs .ai-wbr-console-tab').removeClass('active')
@@ -6493,6 +6497,7 @@ function getMemoryTimelineRelatedNodes(graph, node, typeNames = []) {
 }
 
 function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
+    const fullscreenLabel = memoryGraphFullscreenActive ? '退出全屏' : '全屏图谱';
     return `
         <div class="ai-wbr-memory-graph-toolbar">
             <div class="ai-wbr-memory-graph-row">
@@ -6512,11 +6517,41 @@ function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
                 <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
                 <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
                 <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
-                <button class="menu_button ai-wbr-memory-open-fullscreen" type="button">全屏图谱</button>
+                <button class="menu_button ai-wbr-memory-open-fullscreen" type="button">${fullscreenLabel}</button>
                 <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
             </div>
         </div>
     `;
+}
+
+function setMemoryGraphFullscreen(enabled, options = {}) {
+    const section = $('#ai_wbr_memory_graph_section');
+    if (!section.length) {
+        return;
+    }
+    memoryGraphFullscreenActive = !!enabled;
+    section.toggleClass('ai-wbr-memory-graph-fullscreen', memoryGraphFullscreenActive);
+    $('body').toggleClass('ai-wbr-memory-graph-fullscreen-open', memoryGraphFullscreenActive);
+    $('#ai_wbr_memory_graph_fullscreen').text(memoryGraphFullscreenActive ? '退出全屏' : '全屏图谱');
+    if (memoryGraphFullscreenActive) {
+        section.closest('.ai-wbr-graph-shell').removeClass('preview-open');
+    }
+    const shouldFit = options.fit !== false;
+    requestAnimationFrame(() => {
+        if (shouldFit) {
+            fitMemoryGraphToContainer(getMemoryGraph());
+        }
+        renderMemoryPanel('graph');
+    });
+}
+
+function openMemoryGraphCanvasFullscreen() {
+    const openConsole = globalThis.aiWbrOpenConsole;
+    if (typeof openConsole === 'function' && !$('#ai_wbr_memory_graph_section').is(':visible')) {
+        openConsole('graph', { mode: 'floating' });
+    }
+    setTimeout(() => setMemoryGraphFullscreen(true), 80);
+    setTimeout(() => setMemoryGraphFullscreen(true), 240);
 }
 
 function renderMemoryTimelineView(graph, displayModel) {
@@ -8632,14 +8667,7 @@ function bindMemoryPanelActions() {
         .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_fullscreen, .ai-wbr-memory-open-fullscreen', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            const openConsole = globalThis.aiWbrOpenConsole;
-            if (typeof openConsole === 'function') {
-                openConsole('graph', { mode: 'full' });
-                setTimeout(() => {
-                    fitMemoryGraphToContainer(getMemoryGraph());
-                    renderMemoryPanel('graph');
-                }, 160);
-            }
+            setMemoryGraphFullscreen(!memoryGraphFullscreenActive);
         })
         .on('click.aiWbrGraphWorkspace', '#ai_wbr_memory_graph_close_detail, .ai-wbr-memory-detail-close', (event) => {
             event.preventDefault();
@@ -9678,6 +9706,9 @@ function createFloatingMemoryWindow() {
     }
 
     function closeWindow() {
+        if (memoryGraphFullscreenActive) {
+            setMemoryGraphFullscreen(false, { fit: false });
+        }
         win.removeClass('open').addClass('closing');
         const node = win?.[0];
         if (node) {
@@ -9725,16 +9756,19 @@ function createFloatingMemoryWindow() {
         fabLastToggleAt = now;
         event?.preventDefault?.();
         event?.stopPropagation?.();
-        openWindow('graph', { mode: 'full' });
+        openWindow('graph', { mode: 'floating' });
+        setTimeout(() => setMemoryGraphFullscreen(true), 90);
         setTimeout(() => {
             if (!win.hasClass('open') || getStandaloneTabId() !== 'graph') {
-                openWindow('graph', { mode: 'full' });
+                openWindow('graph', { mode: 'floating' });
             }
+            setMemoryGraphFullscreen(true);
         }, 80);
         setTimeout(() => {
             if (!win.hasClass('open') || !$('#ai_wbr_memory_graph').is(':visible')) {
-                openWindow('graph', { mode: 'full' });
+                openWindow('graph', { mode: 'floating' });
             }
+            setMemoryGraphFullscreen(true);
         }, 260);
     }
 
@@ -9853,6 +9887,10 @@ function createFloatingMemoryWindow() {
 
     // ESC 关闭
     $(document).on('keydown', (event) => {
+        if (event.key === 'Escape' && memoryGraphFullscreenActive) {
+            setMemoryGraphFullscreen(false);
+            return;
+        }
         if (event.key === 'Escape' && win.hasClass('open')) {
             toggleWindow();
         }
