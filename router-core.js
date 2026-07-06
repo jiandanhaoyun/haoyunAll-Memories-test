@@ -7377,6 +7377,7 @@ function bindMemoryGraphSvgInteractions() {
         memoryGraphSelectedLinkId = '';
         memoryGraphDetailMode = 'node';
         memoryGraphDisplayMode = 'focus';
+        previewPanel.closest('.ai-wbr-graph-shell').removeClass('preview-open');
         renderMemoryPanel('graph');
     });
 
@@ -7554,6 +7555,12 @@ function bindMemoryGraphSvgInteractions() {
         renderMemoryPanel('graph');
         $('#ai_wbr_memory_node_popover').hide();
     });
+
+    $(document).off('click.memoryGraphShellToggles')
+        .on('click.memoryGraphShellToggles', '#ai_wbr_memory_graph_preview_toggle', function (event) {
+            event.preventDefault();
+            $('#ai_wbr_memory_preview_panel').closest('.ai-wbr-graph-shell').toggleClass('preview-open');
+        });
 
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-edge, .ai-wbr-memory-edge-hit', function (event) {
         event.preventDefault();

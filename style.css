@@ -843,22 +843,33 @@
 }
 
 .ai-wbr-graph-shell {
-    display: grid;
-    grid-template-columns: minmax(16rem, 21rem) minmax(22rem, 1fr) minmax(18rem, 24rem);
-    gap: 0;
+    position: relative;
+    display: block;
     height: 100%;
     min-height: 0;
     flex: 1 1 auto;
+    overflow: hidden;
 }
 
 .ai-wbr-memory-preview-panel {
+    position: absolute;
+    z-index: 5;
+    inset: 0 auto 0 0;
+    width: min(22rem, 86%);
     min-width: 0;
+    transform: translateX(-102%);
+    transition: transform 160ms ease;
     overflow: auto;
     border-right: 1px solid rgba(176, 225, 255, 0.18);
     background:
         linear-gradient(180deg, rgba(84, 226, 166, 0.055), rgba(125, 212, 255, 0.035)),
         color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(12, 16, 24, 0.96)) 94%, #08101d 6%);
     padding: 0.85rem;
+    box-shadow: 18px 0 34px rgba(0, 0, 0, 0.28);
+}
+
+.ai-wbr-graph-shell.preview-open .ai-wbr-memory-preview-panel {
+    transform: translateX(0);
 }
 
 .ai-wbr-memory-preview-head {
@@ -994,6 +1005,12 @@
 }
 
 .ai-wbr-memory-detail-drawer {
+    position: absolute;
+    z-index: 4;
+    inset: 0 0 0 auto;
+    width: min(24rem, 88%);
+    transform: translateX(102%);
+    transition: transform 160ms ease;
     min-width: 0;
     overflow: auto;
     border-left: 1px solid rgba(176, 225, 255, 0.18);
@@ -1001,6 +1018,11 @@
         linear-gradient(180deg, rgba(125, 212, 255, 0.06), rgba(183, 140, 255, 0.035)),
         color-mix(in srgb, var(--SmartThemeBlurTintColor, rgba(12, 16, 24, 0.96)) 94%, #08101d 6%);
     padding: 1rem;
+    box-shadow: -18px 0 34px rgba(0, 0, 0, 0.28);
+}
+
+.ai-wbr-memory-detail-drawer.open {
+    transform: translateX(0);
 }
 
 .ai-wbr-memory-detail-empty,
