@@ -1,8 +1,8 @@
 ﻿{
     "manifest_version": 1,
     "id": "ai_worldbook_router",
-    "display_name": "涓栫晫涔﹁鍙?,
-    "description": "鍓嶇疆 AI 涓栫晫涔﹁矾鐢变笌杞婚噺璁板繂鍥捐氨鎺у埗鍙?,
+    "display_name": "世界书读取",
+    "description": "前置 AI 世界书路由与轻量记忆图谱控制台",
     "loading_order": 95,
     "requires": [],
     "optional": [],
@@ -10,7 +10,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zmer",
-    "version": "0.5.41",
+    "version": "0.5.42",
     "homepage": "https://github.com/jiandanhaoyun/haoyunAll-Memories",
     "homePage": "https://github.com/jiandanhaoyun/haoyunAll-Memories",
     "auto_update": true
