@@ -3645,6 +3645,25 @@ function sanitizeMemoryUpdateForApply(update) {
     return sanitized;
 }
 
+function createMemoryFallbackNodeFromSummary(summary, fallbackIndex = 0) {
+    const text = String(summary || '').trim();
+    if (normalizeText(text).length < 8) return null;
+    let title = truncateText(text.split(/[。.!?\n]/u).find(part => normalizeText(part).length >= 4) || text, 48);
+    if (isWeakMemoryTitle(title)) {
+        title = `剧情进展 ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    return normalizeMemoryNode({
+        id: `event_${Date.now().toString(36)}_${fallbackIndex}`,
+        title,
+        type: 'event',
+        summary: title,
+        content: text,
+        tags: ['自动摘要'],
+        importance: 0.52,
+        credibility: 0.72,
+    }, fallbackIndex);
+}
+
 function getRecentMessagesByCount(chat, count) {
     const limit = clampNumber(count, 6, 2, 40);
     return chat
@@ -4285,6 +4304,16 @@ function applyMemoryGraphUpdate(update, context = getContext()) {
         touchedEntries.push(existing);
     }
 
+    if (!addedOrUpdatedNodeCount) {
+        const fallbackNode = createMemoryFallbackNodeFromSummary(update?.summary, byId.size);
+        if (fallbackNode) {
+            graph.nodes.push(fallbackNode);
+            byId.set(fallbackNode.id, fallbackNode);
+            addedOrUpdatedNodeCount += 1;
+            touchedEntries.push(fallbackNode);
+        }
+    }
+
     graph.nodes = graph.nodes
         .sort((a, b) => (Number(b.importance || 0) - Number(a.importance || 0)) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
         .slice(0, clampNumber(settings.memoryMaxNodes, 60, 5, 200));
@@ -4641,7 +4670,7 @@ async function runMemoryGraphUpdate(reason = 'realtime', options = {}) {
                 persistChatMemoryContainer(container, context);
                 
                 let memoryResult = null;
-                const shouldQueueReview = options.review !== false;
+                const shouldQueueReview = !!settings.memoryReviewRequired && options.review !== false;
                 if (shouldQueueReview) {
                     const review = enqueueMemoryReview(update, {
                         reason,
@@ -9006,22 +9035,20 @@ function bindMemoryPanelActions() {
 
     $('#ai_wbr_memory_run_now').on('click', async (event) => {
         event.preventDefault();
-                await runMemoryGraphUpdate('manual', {
-                    mode: 'realtime',
-                    scanMessages: settings.memoryRealtimeScanMessages,
-                    force: true,
-            review: true,
-                });
+        await runMemoryGraphUpdate('manual', {
+            mode: 'realtime',
+            scanMessages: settings.memoryRealtimeScanMessages,
+            force: true,
+        });
     });
 
     $('#ai_wbr_memory_summary_now').on('click', async (event) => {
         event.preventDefault();
-                await runMemoryGraphUpdate('manual_summary', {
-                    mode: 'summary',
-                    scanMessages: settings.memorySummaryScanMessages,
-                    force: true,
-            review: true,
-                });
+        await runMemoryGraphUpdate('manual_summary', {
+            mode: 'summary',
+            scanMessages: settings.memorySummaryScanMessages,
+            force: true,
+        });
     });
 
     $('#ai_wbr_memory_accept_all').on('click', (event) => {
