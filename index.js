@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // AI Worldbook Router
 // SillyTavern extension bootstrap. Keep this file small and dependency-free.
 // ============================================================================
@@ -6,7 +6,7 @@
     'use strict';
 
     const NAMESPACE = 'AIWorldbookRouter';
-    const VERSION = '0.6.14';
+    const VERSION = '0.6.15';
     const LOG_PREFIX = '[AI Worldbook Router Bootstrap]';
     const ENTRY_ID = 'ai_wbr_extension_entry';
     const ROW_ID = 'ai_wbr_extension_row';
