@@ -225,7 +225,7 @@
                 <details class="ai-wbr-memory-fold ai-wbr-bookshelf-fold">
                     <summary>
                         <span><i class="fa-solid fa-book-bookmark"></i> 书架向量库</span>
-                        <small>导入 TXT 后需手动调用 API 或浏览器本地模型向量化。</small>
+                        <small>导入 TXT 或自动记忆书后，可按设置自动构建向量召回。</small>
                     </summary>
                     <div id="ai_wbr_bookshelf_panel" class="ai-wbr-memory-fold-body ai-wbr-bookshelf-panel">
                         <div class="ai-wbr-bookshelf-switches">
@@ -240,6 +240,10 @@
                             <label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book">
                                 <input id="ai_wbr_bookshelf_auto_memory_book" type="checkbox" />
                                 <span>自动维护当前聊天记忆书</span>
+                            </label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book_vectorize">
+                                <input id="ai_wbr_bookshelf_auto_memory_book_vectorize" type="checkbox" />
+                                <span>记忆书生成后自动向量化</span>
                             </label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector">
                                 <input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />
@@ -305,7 +309,7 @@
                             <span id="ai_wbr_bookshelf_model_status" class="ai-wbr-status">未测试</span>
                         </div>
 
-                        <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。导入 TXT 后会进入待向量化，需要点击“开始向量化”。</div>
+                        <div id="ai_wbr_bookshelf_status" class="ai-wbr-memory-history-status">书架待命。记忆书生成后会按设置自动向量化；TXT 导入仍可在书籍详情中手动向量化。</div>
 
                         <div class="ai-wbr-bookshelf-layout">
                             <section>

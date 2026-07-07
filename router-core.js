@@ -166,6 +166,7 @@ const defaultSettings = {
     bookshelfEnabled: false,
     bookshelfAutoInject: false,
     bookshelfAutoMemoryBook: true,
+    bookshelfAutoMemoryBookVectorize: true,
     bookshelfOnlyBound: true,
     bookshelfAllowGlobal: false,
     bookshelfMaxChunks: 3,
@@ -2252,12 +2253,13 @@ function scheduleBookshelfMemoryBookSync(context = getContext(), options = {}) {
         try {
             if (getCurrentChatMemoryKey() !== chatKey) return;
             const graph = getMemoryGraph(context);
-            const result = await syncMemoryGraphBookshelfBooks(graph, context, { vectorize: false });
+            const autoVectorize = !!settings.bookshelfAutoMemoryBookVectorize;
+            const result = await syncMemoryGraphBookshelfBooks(graph, context, { vectorize: autoVectorize });
             const orphanDeleted = await cleanupOrphanBookshelfMemoryBooks(context).catch(() => 0);
             const deletedCount = Number(result.deleted || 0) + Number(orphanDeleted || 0);
             if (!options.silent) {
                 setBookshelfStatus(result.books
-                    ? `记忆书已自动刷新：${result.books} 本，${result.chunks} 个小节。`
+                    ? `记忆书已自动刷新${autoVectorize ? '并向量化' : ''}：${result.books} 本，${result.chunks} 个小节。`
                     : `当前聊天暂无图谱内容，已清理旧记忆书 ${deletedCount} 本。`);
             }
             if ($('#ai_wbr_bookshelf_panel').length) {
@@ -6615,6 +6617,7 @@ function createBookshelfStandaloneFold() {
                             <label class="checkbox_label" for="ai_wbr_bookshelf_enabled"><input id="ai_wbr_bookshelf_enabled" type="checkbox" />启用向量召回</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_auto_inject"><input id="ai_wbr_bookshelf_auto_inject" type="checkbox" />生成前自动注入</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book"><input id="ai_wbr_bookshelf_auto_memory_book" type="checkbox" />自动维护当前聊天记忆书</label>
+                            <label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book_vectorize"><input id="ai_wbr_bookshelf_auto_memory_book_vectorize" type="checkbox" />记忆书生成后自动向量化</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_memory_vector"><input id="ai_wbr_bookshelf_memory_vector" type="checkbox" />图谱记忆参与召回</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_only_bound"><input id="ai_wbr_bookshelf_only_bound" type="checkbox" />仅召回绑定书籍</label>
                             <label class="checkbox_label" for="ai_wbr_bookshelf_allow_global"><input id="ai_wbr_bookshelf_allow_global" type="checkbox" />允许全局书籍</label>
@@ -6681,6 +6684,13 @@ function ensureBookshelfStandaloneControls(section) {
             $('<label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book"></label>')
                 .append('<input id="ai_wbr_bookshelf_auto_memory_book" type="checkbox" />')
                 .append('自动维护当前聊天记忆书'),
+        );
+    }
+    if (switches.length && !panel.find('#ai_wbr_bookshelf_auto_memory_book_vectorize').length) {
+        switches.find('#ai_wbr_bookshelf_auto_memory_book').closest('label').after(
+            $('<label class="checkbox_label" for="ai_wbr_bookshelf_auto_memory_book_vectorize"></label>')
+                .append('<input id="ai_wbr_bookshelf_auto_memory_book_vectorize" type="checkbox" />')
+                .append('记忆书生成后自动向量化'),
         );
     }
     const config = panel.find('.ai-wbr-bookshelf-config').first();
@@ -6975,7 +6985,8 @@ function renderStandaloneSettings(container) {
                 if (settings.bookshelfAutoMemoryBook) {
                     scheduleBookshelfMemoryBookSync(getContext(), { force: true, silent: false, delayMs: 100 });
                 }
-            })),
+            }))
+            .append(createStandaloneSettingsToggle('记忆书生成后自动向量化', 'bookshelfAutoMemoryBookVectorize', '自动记忆书刷新后立即构建可召回向量。')),
     );
 
     container.append($('<div class="ai-wbr-console-section-title"></div>').text('设置分区'));
@@ -8445,6 +8456,7 @@ async function renderBookshelfPanel() {
     panel.find('#ai_wbr_bookshelf_enabled').prop('checked', !!settings.bookshelfEnabled);
     panel.find('#ai_wbr_bookshelf_auto_inject').prop('checked', !!settings.bookshelfAutoInject);
     panel.find('#ai_wbr_bookshelf_auto_memory_book').prop('checked', !!settings.bookshelfAutoMemoryBook);
+    panel.find('#ai_wbr_bookshelf_auto_memory_book_vectorize').prop('checked', !!settings.bookshelfAutoMemoryBookVectorize);
     panel.find('#ai_wbr_bookshelf_memory_vector').prop('checked', !!settings.bookshelfMemoryVectorRecall);
     panel.find('#ai_wbr_bookshelf_only_bound').prop('checked', !!settings.bookshelfOnlyBound);
     panel.find('#ai_wbr_bookshelf_allow_global').prop('checked', !!settings.bookshelfAllowGlobal);
@@ -8466,6 +8478,7 @@ async function renderBookshelfPanel() {
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('当前聊天'), $('<span></span>').text(scope.chatName || '当前聊天')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('自动注入'), $('<span></span>').text(settings.bookshelfEnabled && settings.bookshelfAutoInject ? '已开启' : '关闭')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('记忆书'), $('<span></span>').text(settings.bookshelfAutoMemoryBook ? '自动维护当前聊天' : '手动刷新')),
+        $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('记忆书向量'), $('<span></span>').text(settings.bookshelfAutoMemoryBookVectorize ? '生成后自动向量化' : '手动向量化')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('图谱向量'), $('<span></span>').text(settings.bookshelfMemoryVectorRecall ? `开启 · 最多 ${settings.bookshelfMemoryVectorMaxItems || defaultSettings.bookshelfMemoryVectorMaxItems} 条` : '关闭')),
         $('<div class="ai-wbr-bookshelf-scope-card"></div>').append($('<b></b>').text('向量模型'), $('<span></span>').text(getBookshelfEmbeddingProviderMeta().label)),
     );
@@ -9902,6 +9915,7 @@ function bindMemoryPanelActions() {
     bindCheckbox('#ai_wbr_bookshelf_enabled', 'bookshelfEnabled');
     bindCheckbox('#ai_wbr_bookshelf_auto_inject', 'bookshelfAutoInject');
     bindCheckbox('#ai_wbr_bookshelf_auto_memory_book', 'bookshelfAutoMemoryBook');
+    bindCheckbox('#ai_wbr_bookshelf_auto_memory_book_vectorize', 'bookshelfAutoMemoryBookVectorize');
     bindCheckbox('#ai_wbr_bookshelf_memory_vector', 'bookshelfMemoryVectorRecall');
     bindCheckbox('#ai_wbr_bookshelf_only_bound', 'bookshelfOnlyBound');
     bindCheckbox('#ai_wbr_bookshelf_allow_global', 'bookshelfAllowGlobal');
@@ -9934,7 +9948,7 @@ function bindMemoryPanelActions() {
             renderBookshelfPanel();
         });
 
-    $('#ai_wbr_bookshelf_enabled, #ai_wbr_bookshelf_auto_inject, #ai_wbr_bookshelf_auto_memory_book, #ai_wbr_bookshelf_memory_vector, #ai_wbr_bookshelf_only_bound, #ai_wbr_bookshelf_allow_global, #ai_wbr_bookshelf_memory_vector_max, #ai_wbr_bookshelf_max_chunks, #ai_wbr_bookshelf_max_chars, #ai_wbr_bookshelf_min_score, #ai_wbr_bookshelf_api_url, #ai_wbr_bookshelf_api_key, #ai_wbr_bookshelf_api_model, #ai_wbr_bookshelf_local_model')
+    $('#ai_wbr_bookshelf_enabled, #ai_wbr_bookshelf_auto_inject, #ai_wbr_bookshelf_auto_memory_book, #ai_wbr_bookshelf_auto_memory_book_vectorize, #ai_wbr_bookshelf_memory_vector, #ai_wbr_bookshelf_only_bound, #ai_wbr_bookshelf_allow_global, #ai_wbr_bookshelf_memory_vector_max, #ai_wbr_bookshelf_max_chunks, #ai_wbr_bookshelf_max_chars, #ai_wbr_bookshelf_min_score, #ai_wbr_bookshelf_api_url, #ai_wbr_bookshelf_api_key, #ai_wbr_bookshelf_api_model, #ai_wbr_bookshelf_local_model')
         .on('input change', () => {
             syncBookshelfProviderVisibility();
             renderBookshelfPanel();
@@ -10179,15 +10193,12 @@ function bindMemoryPanelActions() {
         event.preventDefault();
         try {
             setBookshelfStatus('正在从图谱拆分并生成自动记忆书...');
-            const result = await syncMemoryGraphBookshelfBooks(getMemoryGraph(), getContext(), { vectorize: false });
+            const autoVectorize = !!settings.bookshelfAutoMemoryBookVectorize;
+            const result = await syncMemoryGraphBookshelfBooks(getMemoryGraph(), getContext(), { vectorize: autoVectorize });
             selectedBookshelfBookId = result.bookIds?.[0] || selectedBookshelfBookId;
             bookshelfLastTestResults = [];
-            const provider = getBookshelfEmbeddingProviderMeta();
-            if (provider.model && result.bookIds?.length) {
-                for (const bookId of result.bookIds) {
-                    await rebuildBookshelfBookVectors(bookId);
-                }
-                setBookshelfStatus(`自动记忆书已生成并向量化：${result.books} 本，${result.chunks} 个摘要片段；已替换旧书 ${result.deleted} 本。`);
+            if (autoVectorize) {
+                setBookshelfStatus(`自动记忆书已生成并自动向量化：${result.books} 本，${result.chunks} 个摘要片段；已替换旧书 ${result.deleted} 本。`);
             } else {
                 setBookshelfStatus(`自动记忆书已生成：${result.books} 本，${result.chunks} 个摘要片段；配置向量模型后点击书籍“开始向量化”。`);
             }
@@ -11085,6 +11096,7 @@ function bindBookshelfDynamicSettingsActions() {
         '#ai_wbr_bookshelf_enabled',
         '#ai_wbr_bookshelf_auto_inject',
         '#ai_wbr_bookshelf_auto_memory_book',
+        '#ai_wbr_bookshelf_auto_memory_book_vectorize',
         '#ai_wbr_bookshelf_memory_vector',
         '#ai_wbr_bookshelf_only_bound',
         '#ai_wbr_bookshelf_allow_global',
@@ -11109,6 +11121,7 @@ function bindBookshelfDynamicSettingsActions() {
                 saveSetting('bookshelfAutoMemoryBook', !!this.checked);
                 if (this.checked) scheduleBookshelfMemoryBookSync(getContext(), { force: true, silent: false, delayMs: 100 });
             }
+            else if (id === 'ai_wbr_bookshelf_auto_memory_book_vectorize') saveSetting('bookshelfAutoMemoryBookVectorize', !!this.checked);
             else if (id === 'ai_wbr_bookshelf_memory_vector') saveSetting('bookshelfMemoryVectorRecall', !!this.checked);
             else if (id === 'ai_wbr_bookshelf_only_bound') saveSetting('bookshelfOnlyBound', !!this.checked);
             else if (id === 'ai_wbr_bookshelf_allow_global') saveSetting('bookshelfAllowGlobal', !!this.checked);
