@@ -3603,7 +3603,7 @@ function normalizeMemoryNode(rawNode, fallbackIndex = 0) {
     return {
         id: createMemoryId(rawNode?.id || title, `node_${fallbackIndex + 1}`),
         title,
-        type: truncateText(rawNode?.type || 'event', 32),
+        type: normalizeMemoryNodeType(rawNode),
         content: truncateText(rawNode?.content || rawNode?.description || '', 1200),
         summary: truncateText(rawNode?.summary || title, 120),
         location: truncateText(rawNode?.location || rawNode?.scene || '', 120),
@@ -3618,6 +3618,105 @@ function normalizeMemoryNode(rawNode, fallbackIndex = 0) {
         credibility: clampNumber(rawNode?.credibility, 0.8, 0, 1),
         updatedAt: new Date().toISOString(),
     };
+}
+
+function normalizeMemoryNodeType(rawNode = {}) {
+    const explicitType = String(rawNode?.type || rawNode?.category || rawNode?.kind || '').trim().toLowerCase();
+    const typeAliases = {
+        person: 'character',
+        people: 'character',
+        npc: 'character',
+        role: 'character',
+        char: 'character',
+        place: 'location',
+        scene: 'location',
+        area: 'location',
+        prop: 'item',
+        object: 'item',
+        equipment: 'item',
+        artifact: 'item',
+        organization: 'faction',
+        org: 'faction',
+        group: 'faction',
+        force: 'faction',
+        setting: 'concept',
+        lore: 'concept',
+        idea: 'concept',
+        law: 'rule',
+        constraint: 'rule',
+        mission: 'quest',
+        plot: 'event',
+        timeline: 'event',
+    };
+    const allowedTypes = new Set(MEMORY_NODE_TYPE_OPTIONS.map(option => option.value));
+    const normalizedExplicit = typeAliases[explicitType] || explicitType;
+    if (allowedTypes.has(normalizedExplicit)) {
+        return normalizedExplicit;
+    }
+    if (/^(人物|角色|主角|配角|npc|玩家)$/iu.test(explicitType)) return 'character';
+    if (/^(地点|场景|区域|位置|房间|城市|据点)$/iu.test(explicitType)) return 'location';
+    if (/^(道具|物品|装备|武器|线索|资料)$/iu.test(explicitType)) return 'item';
+    if (/^(势力|组织|阵营|队伍|家族|帮派)$/iu.test(explicitType)) return 'faction';
+    if (/^(概念|设定|世界观|能力|机制)$/iu.test(explicitType)) return 'concept';
+    if (/^(规则|法则|限制|约定)$/iu.test(explicitType)) return 'rule';
+    if (/^(任务|目标|悬念|问题)$/iu.test(explicitType)) return 'quest';
+
+    const text = normalizeText([
+        rawNode?.title,
+        rawNode?.label,
+        rawNode?.summary,
+        rawNode?.content,
+        rawNode?.description,
+        rawNode?.location,
+        rawNode?.scene,
+        rawNode?.place,
+        ...(Array.isArray(rawNode?.keys) ? rawNode.keys : []),
+        ...(Array.isArray(rawNode?.tags) ? rawNode.tags : []),
+    ].filter(Boolean).join(' '));
+
+    if (/\b(character|person|npc|protagonist|hero|heroine|villain|ally|enemy|friend|teacher|student|doctor|captain|king|queen|girl|boy|man|woman)\b/iu.test(text)) {
+        return 'character';
+    }
+    if (/(人物|角色|主角|配角|同伴|敌人|朋友|老师|学生|医生|队长|国王|女王|少女|少年|男人|女人|名字|身份)/u.test(text)) {
+        return 'character';
+    }
+    if (/\b(place|location|scene|area|city|room|street|building|school|shop|base|station|home|house|castle|forest|village|bar|hotel)\b/iu.test(text)) {
+        return 'location';
+    }
+    if (/(地点|场景|位置|区域|城市|房间|街道|建筑|学校|商店|据点|车站|家里|城堡|森林|村庄|酒馆|旅馆|医院|办公室|教室)/u.test(text)) {
+        return 'location';
+    }
+    if (/\b(item|prop|tool|weapon|key|letter|book|phone|ring|card|token|medicine|artifact|equipment|sword|gun|map|note)\b/iu.test(text)) {
+        return 'item';
+    }
+    if (/(道具|物品|工具|武器|钥匙|信件|书本|手机|戒指|卡片|令牌|药物|神器|装备|剑|枪|地图|笔记|线索)/u.test(text)) {
+        return 'item';
+    }
+    if (/\b(faction|organization|guild|team|club|company|family|army|gang|group|order|kingdom|empire)\b/iu.test(text)) {
+        return 'faction';
+    }
+    if (/(势力|组织|公会|队伍|社团|公司|家族|军队|帮派|集团|教团|王国|帝国|阵营)/u.test(text)) {
+        return 'faction';
+    }
+    if (/\b(rule|law|constraint|taboo|protocol|contract|agreement|promise)\b/iu.test(text)) {
+        return 'rule';
+    }
+    if (/(规则|法则|限制|禁忌|协议|契约|约定|承诺|条件)/u.test(text)) {
+        return 'rule';
+    }
+    if (/\b(concept|setting|lore|system|ability|power|magic|skill|mechanism|curse|ritual)\b/iu.test(text)) {
+        return 'concept';
+    }
+    if (/(概念|设定|世界观|系统|能力|力量|魔法|技能|机制|诅咒|仪式|背景)/u.test(text)) {
+        return 'concept';
+    }
+    if (/\b(quest|mission|goal|objective|task|open question|problem)\b/iu.test(text)) {
+        return 'quest';
+    }
+    if (/(任务|目标|目的|待办|悬念|未解|问题|谜团)/u.test(text)) {
+        return 'quest';
+    }
+    return 'event';
 }
 
 function normalizeMemoryLink(rawLink, nodeIds, fallbackIndex = 0) {
@@ -4209,6 +4308,8 @@ function buildMemoryExtractionPrompt(recentMessages, graph) {
 6. Every new or updated event/location/character node should include location and timeSpan when they are known or can be inherited from current state.
 7. If the recent messages only imply the same scene or phase, use state.current_location/current_time as the default location/timeSpan for affected nodes.
 8. Add links for meaningful same-scene or same-time continuity when it helps connect plot events without inventing facts.
+9. Do not put every fact into event nodes. Split durable entities into typed nodes: character, location, item, faction, concept, rule, quest, and event.
+10. When a message introduces a person, place, item, organization, rule, ability, or open task, create or update that typed node and link it to the related event.
 </rules>
 <custom_state_definitions>
 ${customDefinitionLines}
@@ -6926,6 +7027,43 @@ function getMemoryGraphNodeScore(node, degree = 0, index = 0) {
     return (degree * 1.6) + importance + recencyBoost + (1 / Math.max(10, index + 10));
 }
 
+function selectMemoryGraphVisibleNodes(scoredItems, nodeLimit, mode = 'overview') {
+    const sorted = (Array.isArray(scoredItems) ? scoredItems : [])
+        .slice()
+        .sort((a, b) => b.score - a.score);
+    if (mode !== 'overview' || sorted.length <= nodeLimit) {
+        return sorted.slice(0, nodeLimit).map(item => item.node);
+    }
+
+    const visible = [];
+    const usedIds = new Set();
+    const preferredTypes = ['character', 'location', 'item', 'faction', 'concept', 'rule', 'quest'];
+    const reservePerType = nodeLimit >= 30 ? 2 : 1;
+    for (const type of preferredTypes) {
+        const picks = sorted
+            .filter(item => String(item.node?.type || 'event') === type && !usedIds.has(String(item.node?.id || '')))
+            .slice(0, reservePerType);
+        for (const pick of picks) {
+            const id = String(pick.node?.id || '');
+            if (!id || usedIds.has(id) || visible.length >= nodeLimit) {
+                continue;
+            }
+            visible.push(pick.node);
+            usedIds.add(id);
+        }
+    }
+
+    for (const item of sorted) {
+        const id = String(item.node?.id || '');
+        if (!id || usedIds.has(id) || visible.length >= nodeLimit) {
+            continue;
+        }
+        visible.push(item.node);
+        usedIds.add(id);
+    }
+    return visible;
+}
+
 function buildMemoryGraphDisplayModel(graph) {
     const allNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
     const allLinks = Array.isArray(graph?.links) ? graph.links : [];
@@ -6993,15 +7131,14 @@ function buildMemoryGraphDisplayModel(graph) {
     }
 
     const nodeLimit = mode === 'full' ? 120 : mode === 'timeline' ? 120 : mode === 'focus' ? 54 : mode === 'search' ? 72 : 36;
-    const visibleNodes = typeFilteredNodes
+    const scoredVisibleNodes = typeFilteredNodes
         .filter(node => candidateIds.has(String(node.id)))
         .map((node, index) => ({
             node,
             score: getMemoryGraphNodeScore(node, degree.get(String(node.id)) || 0, index),
         }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, nodeLimit)
-        .map(item => item.node);
+        .sort((a, b) => b.score - a.score);
+    const visibleNodes = selectMemoryGraphVisibleNodes(scoredVisibleNodes, nodeLimit, mode);
     const visibleIds = new Set(visibleNodes.map(node => String(node.id)));
 
     const linkLimit = mode === 'full' ? 180 : mode === 'overview' ? 80 : mode === 'timeline' ? 80 : 140;
