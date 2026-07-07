@@ -1326,6 +1326,12 @@
     flex: 0 0 auto;
 }
 
+.ai-wbr-memory-graph-typebar small {
+    margin-left: 0.2rem;
+    opacity: 0.72;
+    font-size: 0.72rem;
+}
+
 .ai-wbr-memory-graph-search {
     width: min(15rem, 38vw);
     min-height: 1.8rem;
@@ -1592,6 +1598,36 @@
     cursor: pointer;
     pointer-events: stroke;
     vector-effect: non-scaling-stroke;
+}
+
+.ai-wbr-memory-category-panel {
+    pointer-events: none;
+}
+
+.ai-wbr-memory-category-bg {
+    fill: rgba(10, 16, 28, 0.42);
+    stroke: rgba(125, 212, 255, 0.22);
+    stroke-width: 1.2;
+    stroke-dasharray: 0;
+    vector-effect: non-scaling-stroke;
+}
+
+.ai-wbr-memory-category-title {
+    fill: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 88%, #9ddcff 12%);
+    font-size: 0.82rem;
+    font-weight: 800;
+    pointer-events: none;
+}
+
+.ai-wbr-memory-category-note {
+    fill: color-mix(in srgb, var(--SmartThemeBodyColor, #e7eefc) 64%, rgba(157, 220, 255, 0.8) 36%);
+    font-size: 0.64rem;
+    opacity: 0.82;
+    pointer-events: none;
+}
+
+.ai-wbr-memory-edge-cross-category {
+    stroke-dasharray: 7 8;
 }
 
 .ai-wbr-memory-arrow {

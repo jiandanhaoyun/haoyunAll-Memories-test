@@ -56,6 +56,16 @@ const MEMORY_NODE_TYPE_OPTIONS = [
     { value: 'rule', label: '\u89c4\u5219' },
     { value: 'quest', label: '\u4efb\u52a1' },
 ];
+const MEMORY_GRAPH_CATEGORY_DEFINITIONS = [
+    { key: 'character', label: '\u89d2\u8272', types: ['character'], note: '\u4eba\u7269\u3001\u8eab\u4efd\u3001\u5173\u7cfb' },
+    { key: 'location', label: '\u5730\u70b9', types: ['location'], note: '\u573a\u666f\u3001\u533a\u57df\u3001\u7a7a\u95f4' },
+    { key: 'item', label: '\u9053\u5177', types: ['item'], note: '\u7269\u54c1\u3001\u88c5\u5907\u3001\u4fe1\u7269' },
+    { key: 'faction', label: '\u52bf\u529b', types: ['faction'], note: '\u7ec4\u7ec7\u3001\u9635\u8425\u3001\u5bb6\u65cf' },
+    { key: 'setting', label: '\u8bbe\u5b9a', types: ['concept', 'rule'], note: '\u4e16\u754c\u89c2\u3001\u89c4\u5219\u3001\u80fd\u529b' },
+    { key: 'quest', label: '\u4efb\u52a1', types: ['quest'], note: '\u76ee\u6807\u3001\u4f0f\u7b14\u3001\u60ac\u5ff5' },
+    { key: 'event', label: '\u4e8b\u4ef6', types: ['event'], note: '\u5267\u60c5\u3001\u884c\u52a8\u3001\u65f6\u95f4\u7247\u6bb5' },
+];
+const MEMORY_GRAPH_CATEGORY_ORDER = MEMORY_GRAPH_CATEGORY_DEFINITIONS.map(item => item.key);
 const MEMORY_LINK_TYPE_OPTIONS = [
     { value: 'INVOLVES', label: '\u6d89\u53ca' },
     { value: 'PART_OF', label: '\u5c5e\u4e8e' },
@@ -7084,22 +7094,61 @@ function getMemoryGraphNodeScore(node, degree = 0, index = 0) {
     return (degree * 1.6) + importance + recencyBoost + (1 / Math.max(10, index + 10));
 }
 
+function getMemoryGraphCategoryDefinition(key) {
+    const normalized = String(key || '').toLowerCase();
+    return MEMORY_GRAPH_CATEGORY_DEFINITIONS.find(item => item.key === normalized) || MEMORY_GRAPH_CATEGORY_DEFINITIONS.find(item => item.key === 'event');
+}
+
+function getMemoryGraphFocusedCategoryFromTypes(typeFilter) {
+    if (!(typeFilter instanceof Set) || typeFilter.size === 0) {
+        return '';
+    }
+    const selectedTypes = [...typeFilter].map(type => String(type || '').toLowerCase()).sort();
+    const match = MEMORY_GRAPH_CATEGORY_DEFINITIONS.find((definition) => {
+        const categoryTypes = definition.types.slice().sort();
+        return selectedTypes.length === categoryTypes.length
+            && selectedTypes.every((type, index) => type === categoryTypes[index]);
+    });
+    return match?.key || '';
+}
+
+function setMemoryGraphFocusedCategory(categoryKey) {
+    const definition = getMemoryGraphCategoryDefinition(categoryKey);
+    if (!definition || !definition.key || String(categoryKey || '') === 'all') {
+        memoryGraphVisibleTypes = new Set();
+        return '';
+    }
+    memoryGraphVisibleTypes = new Set(definition.types);
+    return definition.key;
+}
+
+function getMemoryGraphCategoryKey(type) {
+    const normalized = String(type || 'event').toLowerCase();
+    const definition = MEMORY_GRAPH_CATEGORY_DEFINITIONS.find(item => item.types.includes(normalized));
+    return definition?.key || 'event';
+}
+
+function getMemoryGraphNodeCategoryKey(node) {
+    return getMemoryGraphCategoryKey(node?.type || 'event');
+}
+
 function selectMemoryGraphVisibleNodes(scoredItems, nodeLimit, mode = 'overview') {
     const sorted = (Array.isArray(scoredItems) ? scoredItems : [])
         .slice()
         .sort((a, b) => b.score - a.score);
-    if (mode !== 'overview' || sorted.length <= nodeLimit) {
+    const typeFilter = memoryGraphVisibleTypes instanceof Set ? memoryGraphVisibleTypes : new Set();
+    const focusedCategory = getMemoryGraphFocusedCategoryFromTypes(typeFilter);
+    if (mode !== 'overview' || sorted.length <= nodeLimit || focusedCategory) {
         return sorted.slice(0, nodeLimit).map(item => item.node);
     }
 
     const visible = [];
     const usedIds = new Set();
-    const preferredTypes = ['character', 'location', 'item', 'faction', 'concept', 'rule', 'quest'];
-    const reservePerType = nodeLimit >= 30 ? 2 : 1;
-    for (const type of preferredTypes) {
+    const reservePerCategory = nodeLimit >= 42 ? 4 : nodeLimit >= 30 ? 3 : 2;
+    for (const category of MEMORY_GRAPH_CATEGORY_ORDER) {
         const picks = sorted
-            .filter(item => String(item.node?.type || 'event') === type && !usedIds.has(String(item.node?.id || '')))
-            .slice(0, reservePerType);
+            .filter(item => getMemoryGraphNodeCategoryKey(item.node) === category && !usedIds.has(String(item.node?.id || '')))
+            .slice(0, reservePerCategory);
         for (const pick of picks) {
             const id = String(pick.node?.id || '');
             if (!id || usedIds.has(id) || visible.length >= nodeLimit) {
@@ -7121,6 +7170,42 @@ function selectMemoryGraphVisibleNodes(scoredItems, nodeLimit, mode = 'overview'
     return visible;
 }
 
+function buildMemoryGraphCategoryGroups(nodes, links = [], degree = new Map()) {
+    const nodeList = Array.isArray(nodes) ? nodes : [];
+    const nodeIds = new Set(nodeList.map(node => String(node.id || '')));
+    const nodeById = new Map(nodeList.map(node => [String(node.id || ''), node]));
+    const relatedCategoryByNode = new Map(nodeList.map(node => [String(node.id || ''), new Set()]));
+    for (const link of Array.isArray(links) ? links : []) {
+        const source = String(link?.source || '');
+        const target = String(link?.target || '');
+        if (!nodeIds.has(source) || !nodeIds.has(target)) {
+            continue;
+        }
+        const sourceNode = nodeById.get(source);
+        const targetNode = nodeById.get(target);
+        const sourceCategory = getMemoryGraphNodeCategoryKey(sourceNode);
+        const targetCategory = getMemoryGraphNodeCategoryKey(targetNode);
+        if (sourceCategory !== targetCategory) {
+            relatedCategoryByNode.get(source)?.add(targetCategory);
+            relatedCategoryByNode.get(target)?.add(sourceCategory);
+        }
+    }
+    return MEMORY_GRAPH_CATEGORY_DEFINITIONS
+        .map((definition) => {
+            const groupNodes = nodeList
+                .filter(node => getMemoryGraphNodeCategoryKey(node) === definition.key)
+                .slice()
+                .sort((a, b) => getMemoryGraphNodeScore(b, degree.get(String(b.id)) || 0) - getMemoryGraphNodeScore(a, degree.get(String(a.id)) || 0));
+            return {
+                ...definition,
+                nodes: groupNodes,
+                count: groupNodes.length,
+                relatedCategories: uniqueStrings(groupNodes.flatMap(node => [...(relatedCategoryByNode.get(String(node.id || '')) || [])])),
+            };
+        })
+        .filter(group => group.count > 0);
+}
+
 function buildMemoryGraphDisplayModel(graph) {
     const allNodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
     const allLinks = Array.isArray(graph?.links) ? graph.links : [];
@@ -7131,6 +7216,7 @@ function buildMemoryGraphDisplayModel(graph) {
     const minWeight = clampNumber(memoryGraphMinLinkWeight, 0.35, 0, 1);
     const typeFilter = memoryGraphVisibleTypes instanceof Set ? memoryGraphVisibleTypes : new Set();
     const hasTypeFilter = typeFilter.size > 0;
+    const focusedCategory = getMemoryGraphFocusedCategoryFromTypes(typeFilter);
     const degree = new Map(allNodes.map(node => [String(node.id), 0]));
 
     for (const link of allLinks) {
@@ -7224,10 +7310,22 @@ function buildMemoryGraphDisplayModel(graph) {
         .sort((a, b) => b.score - a.score || a.index - b.index)
         .slice(0, linkLimit)
         .map(item => item.link);
+    const categoryGroups = buildMemoryGraphCategoryGroups(visibleNodes, visibleLinks, degree);
+    const allCategoryGroups = buildMemoryGraphCategoryGroups(allNodes, allLinks, degree);
+    const visibleCategoryCounts = new Map(categoryGroups.map(group => [group.key, group.count]));
+    const totalCategoryCounts = new Map(allCategoryGroups.map(group => [group.key, group.count]));
+    const enrichedCategoryGroups = categoryGroups.map(group => ({
+        ...group,
+        totalCount: totalCategoryCounts.get(group.key) || group.count,
+        visibleCount: visibleCategoryCounts.get(group.key) || group.count,
+    }));
 
     return {
         nodes: visibleNodes,
         links: visibleLinks,
+        categoryGroups: enrichedCategoryGroups,
+        allCategoryGroups,
+        focusedCategory,
         mode,
         query,
         minWeight,
@@ -7240,39 +7338,31 @@ function buildMemoryGraphDisplayModel(graph) {
 
 function renderMemoryGraphTypeFilters(graph) {
     const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
-    const types = [...new Set(nodes.map(node => String(node?.type || 'event')))]
-        .sort((a, b) => getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, a, a).localeCompare(getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, b, b)));
-    if (!types.length) {
+    if (!nodes.length) {
         return '';
     }
+    const counts = new Map(MEMORY_GRAPH_CATEGORY_ORDER.map(key => [key, 0]));
+    for (const node of nodes) {
+        const category = getMemoryGraphNodeCategoryKey(node);
+        counts.set(category, (counts.get(category) || 0) + 1);
+    }
+    const focusedCategory = getMemoryGraphFocusedCategoryFromTypes(memoryGraphVisibleTypes);
     return `<div class="ai-wbr-memory-graph-typebar">
-        ${types.map((type) => {
-            const active = !(memoryGraphVisibleTypes instanceof Set) || memoryGraphVisibleTypes.size === 0 || memoryGraphVisibleTypes.has(type);
-            const label = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, type, type);
-            return `<button class="menu_button ai-wbr-memory-type-filter${active ? ' active' : ''}" type="button" data-memory-node-type="${escapeHtml(type)}">${escapeHtml(label)}</button>`;
+        <button class="menu_button ai-wbr-memory-type-filter${!focusedCategory ? ' active' : ''}" type="button" data-memory-category="all">全部 <small>${nodes.length}</small></button>
+        ${MEMORY_GRAPH_CATEGORY_DEFINITIONS.map((definition) => {
+            const count = counts.get(definition.key) || 0;
+            const active = focusedCategory === definition.key;
+            return `<button class="menu_button ai-wbr-memory-type-filter${active ? ' active' : ''}" type="button" data-memory-category="${escapeHtml(definition.key)}" ${count ? '' : 'disabled'}>${escapeHtml(definition.label)} <small>${count}</small></button>`;
         }).join('')}
     </div>`;
 }
 
 function getMemoryPreviewGroupKey(type) {
-    const normalized = String(type || 'event').toLowerCase();
-    if (normalized === 'character') return 'character';
-    if (normalized === 'event' || normalized === 'quest') return 'event';
-    if (normalized === 'location') return 'location';
-    if (normalized === 'item') return 'item';
-    if (normalized === 'faction' || normalized === 'concept' || normalized === 'rule') return 'setting';
-    return 'other';
+    return getMemoryGraphCategoryKey(type);
 }
 
 function getMemoryPreviewGroupLabel(group) {
-    return ({
-        character: '人物',
-        event: '事件',
-        location: '地点',
-        item: '物品',
-        setting: '设定',
-        other: '其他',
-    })[group] || group;
+    return getMemoryGraphCategoryDefinition(group)?.label || group;
 }
 
 function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayModel(graph)) {
@@ -7319,7 +7409,7 @@ function renderMemoryPreviewPanel(graph, displayModel = buildMemoryGraphDisplayM
         grouped.get(group).push(node);
     }
 
-    const orderedGroups = ['character', 'event', 'location', 'item', 'setting', 'other'];
+    const orderedGroups = MEMORY_GRAPH_CATEGORY_ORDER;
     const createCard = (node) => {
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, node.type, node.type || 'event');
         const summary = node.summary || node.content || '';
@@ -7418,33 +7508,51 @@ function applyMemoryGraphPreviewLayout(displayModel, canvasWidth, canvasHeight) 
         return true;
     }
 
-    const groups = ['character', 'event', 'location', 'item', 'setting', 'other'];
-    const buckets = new Map(groups.map(group => [group, []]));
-    for (const node of nodes) {
-        const group = getMemoryPreviewGroupKey(node.type);
-        (buckets.get(group) || buckets.get('other')).push(node);
-    }
-    const activeGroups = groups.filter(group => buckets.get(group).length);
-    const columns = Math.min(isNarrow ? 1 : isMedium ? 2 : 3, Math.max(1, activeGroups.length));
+    const activeGroups = Array.isArray(displayModel.categoryGroups)
+        ? displayModel.categoryGroups.filter(group => group.nodes.length)
+        : buildMemoryGraphCategoryGroups(nodes, links);
+    const isFocusedCategory = !!displayModel.focusedCategory;
+    const columns = isFocusedCategory
+        ? 1
+        : Math.min(isNarrow ? 1 : isMedium ? 2 : 3, Math.max(1, activeGroups.length));
     const rows = Math.ceil(activeGroups.length / columns);
-    const cellWidth = availableWidth / columns;
-    const cellHeight = availableHeight / Math.max(1, rows);
+    const gapX = isNarrow ? 14 : 22;
+    const gapY = isNarrow ? 18 : 26;
+    const cellWidth = (availableWidth - gapX * Math.max(0, columns - 1)) / columns;
+    const cellHeight = (availableHeight - gapY * Math.max(0, rows - 1)) / Math.max(1, rows);
 
-    activeGroups.forEach((group, groupIndex) => {
+    activeGroups.forEach((groupInfo, groupIndex) => {
         const col = groupIndex % columns;
         const row = Math.floor(groupIndex / columns);
-        const items = buckets.get(group)
+        const originX = padding + col * (cellWidth + gapX);
+        const originY = top + row * (cellHeight + gapY);
+        const innerX = originX + (isNarrow ? 10 : 16);
+        const innerY = originY + (isNarrow ? 34 : 42);
+        const localColumns = Math.max(1, Math.floor((cellWidth - (isNarrow ? 20 : 32)) / (MEMORY_GRAPH_NODE_WIDTH + (isNarrow ? 10 : 18))));
+        const maxVisibleRows = isFocusedCategory ? 7 : isNarrow ? 2 : 3;
+        const maxVisibleItems = Math.max(1, localColumns * maxVisibleRows);
+        const items = groupInfo.nodes
             .slice()
-            .sort((a, b) => getMemoryGraphNodeScore(b) - getMemoryGraphNodeScore(a));
-        const localColumns = Math.max(1, Math.floor(cellWidth / (MEMORY_GRAPH_NODE_WIDTH + (isNarrow ? 10 : 22))));
+            .sort((a, b) => getMemoryGraphNodeScore(b) - getMemoryGraphNodeScore(a))
+            .slice(0, maxVisibleItems);
+        groupInfo.hiddenInLayout = Math.max(0, groupInfo.count - items.length);
+        groupInfo.nodes = items;
+        groupInfo.layout = {
+            x: originX,
+            y: originY,
+            width: cellWidth,
+            height: cellHeight,
+        };
+        const rowGap = isFocusedCategory ? 18 : isNarrow ? 12 : 16;
         items.forEach((node, index) => {
             const localCol = index % localColumns;
             const localRow = Math.floor(index / localColumns);
-            node.x = padding + col * cellWidth + (isNarrow ? 4 : 14) + localCol * (MEMORY_GRAPH_NODE_WIDTH + (isNarrow ? 10 : 22));
-            node.y = top + row * cellHeight + (isNarrow ? 10 : 16) + localRow * (MEMORY_GRAPH_NODE_HEIGHT + (isNarrow ? 16 : 24));
-            const clamped = clampMemoryNodePosition(node.x, node.y, canvasWidth, canvasHeight, top);
-            node.x = clamped.x;
-            node.y = clamped.y;
+            node.x = innerX + localCol * (MEMORY_GRAPH_NODE_WIDTH + (isNarrow ? 10 : 18));
+            node.y = innerY + localRow * (MEMORY_GRAPH_NODE_HEIGHT + rowGap);
+            const maxX = Math.max(innerX, originX + cellWidth - MEMORY_GRAPH_NODE_WIDTH - (isNarrow ? 10 : 16));
+            const maxY = Math.max(innerY, originY + cellHeight - MEMORY_GRAPH_NODE_HEIGHT - (isNarrow ? 10 : 16));
+            node.x = Math.min(maxX, Math.max(innerX, node.x));
+            node.y = Math.min(maxY, Math.max(innerY, node.y));
         });
     });
     return true;
@@ -7775,7 +7883,11 @@ function renderMemoryGraphSvg(graph) {
     if (!usedPreviewLayout) {
         layoutChanged = normalizeMemoryGraphLayout(nodes, displayModel.links, width, height);
     }
-    nodes.forEach((node) => {
+    const layoutVisibleIds = usedPreviewLayout && Array.isArray(displayModel.categoryGroups)
+        ? new Set(displayModel.categoryGroups.flatMap(group => (group.nodes || []).map(node => String(node.id || ''))))
+        : new Set(nodes.map(node => String(node.id || '')));
+    const drawableNodes = nodes.filter(node => layoutVisibleIds.has(String(node.id || '')));
+    drawableNodes.forEach((node) => {
         positions.set(node.id, {
             x: Number(node.x || 0),
             y: Number(node.y || 0),
@@ -7786,7 +7898,29 @@ function renderMemoryGraphSvg(graph) {
         saveMemoryGraph(graph, getContext(), true);
     }
 
-    const edges = displayModel.links;
+    const edges = displayModel.links.filter(link => positions.has(String(link.source || '')) && positions.has(String(link.target || '')));
+    const nodeById = new Map(drawableNodes.map(node => [String(node.id || ''), node]));
+    const categoryPanels = Array.isArray(displayModel.categoryGroups)
+        ? displayModel.categoryGroups
+            .filter(group => group.layout && group.nodes.length)
+            .map((group) => {
+                const layout = group.layout;
+                const hiddenCount = Math.max(0, group.hiddenInLayout || 0);
+                const widthValue = Math.max(120, layout.width);
+                const heightValue = Math.max(72, layout.height);
+                const totalCount = Math.max(group.totalCount || group.count || 0, group.count || 0);
+                const title = `${group.label} ${group.nodes.length}${hiddenCount || totalCount > group.nodes.length ? ` / ${totalCount}` : ''}`;
+                const subtitle = displayModel.focusedCategory
+                    ? group.note
+                    : `${group.note}${hiddenCount ? ` · 已收起 ${hiddenCount}` : ''}`;
+                return `<g class="ai-wbr-memory-category-panel ai-wbr-memory-category-${escapeHtml(group.key)}" data-memory-category="${escapeHtml(group.key)}">
+                    <rect class="ai-wbr-memory-category-bg" x="${layout.x}" y="${layout.y}" width="${widthValue}" height="${heightValue}" rx="18" ry="18"></rect>
+                    <text class="ai-wbr-memory-category-title" x="${layout.x + 16}" y="${layout.y + 22}">${escapeHtml(title)}</text>
+                    <text class="ai-wbr-memory-category-note" x="${layout.x + 16}" y="${layout.y + 40}">${escapeHtml(truncateText(subtitle, 34))}</text>
+                </g>`;
+            })
+            .join('')
+        : '';
     const pairBuckets = new Map();
     edges.forEach((link) => {
         const pairKey = [String(link.source || ''), String(link.target || '')].sort().join('||');
@@ -7808,8 +7942,12 @@ function renderMemoryGraphSvg(graph) {
         if (!source || !target) {
             return '';
         }
-        const opacity = Math.max(0.22, Math.min(0.85, Number(link.weight || 0.5)));
+        const sourceNode = nodeById.get(String(link.source || ''));
+        const targetNode = nodeById.get(String(link.target || ''));
+        const crossCategory = getMemoryGraphNodeCategoryKey(sourceNode) !== getMemoryGraphNodeCategoryKey(targetNode);
+        const opacity = Math.max(crossCategory ? 0.14 : 0.26, Math.min(crossCategory ? 0.46 : 0.85, Number(link.weight || 0.5)));
         const selectedClass = String(link.id) === String(memoryGraphSelectedLinkId) ? ' ai-wbr-memory-edge-selected' : '';
+        const crossClass = crossCategory ? ' ai-wbr-memory-edge-cross-category' : '';
         const typeClass = ` ai-wbr-memory-edge-${escapeHtml(String(link.type || 'RELATED').toLowerCase().replace(/[^a-z0-9_-]/g, '-'))}`;
         const pairKey = [String(link.source || ''), String(link.target || '')].sort().join('||');
         const siblings = (pairBuckets.get(pairKey) || []).slice().sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
@@ -7820,11 +7958,11 @@ function renderMemoryGraphSvg(graph) {
         const linkId = escapeHtml(String(link.id || ''));
         return `
             <path d="${path}" class="ai-wbr-memory-edge-hit" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}"></path>
-            <path d="${path}" class="ai-wbr-memory-edge${typeClass}${selectedClass}" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}" marker-end="url(#ai-wbr-memory-arrow)"><title>${escapeHtml(getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, link.type, link.type || 'RELATED'))}</title></path>
+            <path d="${path}" class="ai-wbr-memory-edge${typeClass}${crossClass}${selectedClass}" data-memory-link-id="${linkId}" data-source-id="${escapeHtml(link.source)}" data-target-id="${escapeHtml(link.target)}" style="opacity:${opacity}" marker-end="url(#ai-wbr-memory-arrow)"><title>${escapeHtml(getOptionLabel(MEMORY_LINK_TYPE_OPTIONS, link.type, link.type || 'RELATED'))}</title></path>
         `;
     }).join('');
 
-    const cards = nodes.map(node => {
+    const cards = drawableNodes.map(node => {
         const position = positions.get(node.id);
         const rawType = String(node.type || 'event');
         const colorClass = `ai-wbr-memory-node-${escapeHtml(rawType.toLowerCase())}`;
@@ -7860,14 +7998,14 @@ function renderMemoryGraphSvg(graph) {
         || !Number.isFinite(memoryGraphView.height)
         || memoryGraphView.width < 120
         || memoryGraphView.height < 80) {
-        fitMemoryGraphToNodes(nodes, container[0]);
+        fitMemoryGraphToNodes(drawableNodes, container[0]);
     }
     syncMemoryGraphViewToContainerAspect(container[0]);
 
     container.html(`
         ${renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges)}
         <div class="ai-wbr-memory-graph-canvas">
-            <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${lines}${cards}</svg>
+            <svg viewBox="${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}" preserveAspectRatio="none" role="img" aria-label="记忆图谱">${markerDefs}${categoryPanels}${lines}${cards}</svg>
         </div>
     `);
     bindMemoryGraphSvgInteractions();
@@ -8713,7 +8851,7 @@ function bindMemoryGraphSvgInteractions() {
             memoryGraphRenderFrame = null;
             const graph = getMemoryGraph();
             if (options.fit) {
-                fitMemoryGraphToNodes(buildMemoryGraphDisplayModel(graph).nodes, container[0]);
+                memoryGraphView = { x: 0, y: 0, width: 0, height: 0 };
             }
             renderMemoryGraphSvg(graph);
         });
@@ -8787,25 +8925,12 @@ function bindMemoryGraphSvgInteractions() {
     container.on('click.memoryGraphSvg', '.ai-wbr-memory-type-filter', function (event) {
         event.preventDefault();
         event.stopPropagation();
-        const type = String($(this).data('memoryNodeType') || '');
-        if (!type) {
+        const category = String($(this).data('memoryCategory') || 'all');
+        if (!category) {
             return;
         }
-        const graph = getMemoryGraph();
-        const allTypes = [...new Set((Array.isArray(graph?.nodes) ? graph.nodes : []).map(node => String(node?.type || 'event')))];
-        if (!(memoryGraphVisibleTypes instanceof Set)) {
-            memoryGraphVisibleTypes = new Set();
-        }
-        if (memoryGraphVisibleTypes.size === 0) {
-            memoryGraphVisibleTypes = new Set(allTypes.filter(item => item !== type));
-        } else if (memoryGraphVisibleTypes.has(type)) {
-            memoryGraphVisibleTypes.delete(type);
-        } else {
-            memoryGraphVisibleTypes.add(type);
-        }
-        if (memoryGraphVisibleTypes.size >= allTypes.length) {
-            memoryGraphVisibleTypes.clear();
-        }
+        setMemoryGraphFocusedCategory(category);
+        memoryGraphDisplayMode = 'overview';
         renderCurrentGraph({ fit: true });
     });
 
