@@ -1,16 +1,20 @@
-{
-    "manifest_version": 1,
-    "id": "ai_worldbook_router",
-    "display_name": "AI Worldbook Router",
-    "description": "AI worldbook routing and lightweight memory graph console",
-    "loading_order": 95,
-    "requires": [],
-    "optional": [],
-    "generate_interceptor": "ai_worldbook_router_intercept",
-    "js": "index.js",
-    "css": "style.css",
-    "author": "zmer",
-    "version": "0.7.1",
-    "homepage": "https://github.com/jiandanhaoyun/haoyunAll-Memories",
-    "auto_update": true
+﻿{
+    "manifest_version":  1,
+    "id":  "ai_worldbook_router_test",
+    "display_name":  "AI Worldbook Router Test",
+    "description":  "TEST channel - AI worldbook routing and lightweight memory graph console",
+    "loading_order":  95,
+    "requires":  [
+
+                 ],
+    "optional":  [
+
+                 ],
+    "generate_interceptor":  "ai_worldbook_router_intercept",
+    "js":  "index.js",
+    "css":  "style.css",
+    "author":  "zmer",
+    "version":  "0.7.1-test.1",
+    "homepage":  "https://github.com/jiandanhaoyun/haoyunAll-Memories-test",
+    "auto_update":  true
 }
