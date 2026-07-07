@@ -66,6 +66,14 @@ const MEMORY_GRAPH_CATEGORY_DEFINITIONS = [
     { key: 'event', label: '\u4e8b\u4ef6', types: ['event'], note: '\u5267\u60c5\u3001\u884c\u52a8\u3001\u65f6\u95f4\u7247\u6bb5' },
 ];
 const MEMORY_GRAPH_CATEGORY_ORDER = MEMORY_GRAPH_CATEGORY_DEFINITIONS.map(item => item.key);
+const MEMORY_GRAPH_KIND_DEFINITIONS = [
+    { key: 'plot', label: '\u5267\u60c5', types: ['event'], cues: /(剧情|进展|发生|遇到|发现|到达|离开|进入|战斗|决定|调查|plot|event|scene|timeline)/iu },
+    { key: 'relationship', label: '\u5173\u7cfb', types: ['character', 'faction'], cues: /(关系|信任|好感|敌意|同盟|合作|背叛|亲近|疏远|relationship|trust|ally|enemy|bond)/iu },
+    { key: 'state', label: '\u72b6\u6001', types: ['character'], cues: /(状态|情绪|受伤|能力|身份|处境|变化|疲惫|害怕|开心|state|mood|emotion|status|injured)/iu },
+    { key: 'goal', label: '\u76ee\u6807', types: ['quest'], cues: /(目标|任务|计划|待办|寻找|调查|解决|mission|goal|objective|task|quest)/iu },
+    { key: 'clue', label: '\u4f0f\u7b14', types: ['quest', 'item', 'concept'], cues: /(伏笔|线索|秘密|悬念|谜团|未解|异常|clue|secret|mystery|hint|foreshadow)/iu },
+    { key: 'context', label: '\u4e0a\u4e0b\u6587', types: ['location', 'item', 'concept', 'rule'], cues: /(地点|道具|设定|规则|世界观|物品|场景|location|item|lore|rule|setting)/iu },
+];
 const MEMORY_LINK_TYPE_OPTIONS = [
     { value: 'INVOLVES', label: '\u6d89\u53ca' },
     { value: 'PART_OF', label: '\u5c5e\u4e8e' },
@@ -7049,6 +7057,46 @@ function getMemoryGraphSearchHaystack(node) {
     ].map(value => String(value || '').toLowerCase()).join('\n');
 }
 
+function getMemoryGraphTextUnit(char) {
+    const value = String(char || '');
+    const code = value.codePointAt(0) || 0;
+    if (!value) return 0;
+    if (/\s/u.test(value)) return 0.34;
+    if (/[\u2e80-\u9fff\uac00-\ud7af\uff00-\uffef]/u.test(value)) return 1;
+    if (/[A-Z]/.test(value)) return 0.68;
+    if (/[a-z]/.test(value)) return 0.56;
+    if (/[0-9]/.test(value)) return 0.58;
+    if (/[.,;:!?'"`~，。；：！？、]/u.test(value)) return 0.36;
+    return code > 127 ? 0.82 : 0.62;
+}
+
+function getMemoryGraphTextUnits(value) {
+    return Array.from(String(value || '')).reduce((sum, char) => sum + getMemoryGraphTextUnit(char), 0);
+}
+
+function truncateMemoryGraphTextByUnits(value, maxUnits = 14) {
+    const chars = Array.from(String(value || '').replace(/\s+/g, ' ').trim());
+    if (!chars.length) {
+        return '';
+    }
+    if (getMemoryGraphTextUnits(chars.join('')) <= maxUnits) {
+        return chars.join('');
+    }
+    const ellipsis = '...';
+    const ellipsisUnits = getMemoryGraphTextUnits(ellipsis);
+    let line = '';
+    let units = 0;
+    for (const char of chars) {
+        const nextUnits = getMemoryGraphTextUnit(char);
+        if (units + nextUnits + ellipsisUnits > maxUnits) {
+            break;
+        }
+        line += char;
+        units += nextUnits;
+    }
+    return `${line.trim()}${ellipsis}`;
+}
+
 function splitMemoryGraphSvgText(value, maxChars = 14, maxLines = 1) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     if (!text) {
@@ -7056,35 +7104,99 @@ function splitMemoryGraphSvgText(value, maxChars = 14, maxLines = 1) {
     }
 
     const lines = [];
-    let cursor = text;
-    while (cursor && lines.length < maxLines) {
-        if (cursor.length <= maxChars) {
-            lines.push(cursor);
-            cursor = '';
-            break;
+    const chars = Array.from(text);
+    let line = '';
+    let units = 0;
+    let index = 0;
+    while (index < chars.length && lines.length < maxLines) {
+        const char = chars[index];
+        const nextUnits = getMemoryGraphTextUnit(char);
+        if (line && units + nextUnits > maxChars) {
+            lines.push(line.trim());
+            line = '';
+            units = 0;
+            continue;
         }
-        let cut = cursor.lastIndexOf(' ', maxChars);
-        if (cut < Math.floor(maxChars * 0.55)) {
-            cut = maxChars;
-        }
-        lines.push(cursor.slice(0, cut).trim());
-        cursor = cursor.slice(cut).trim();
+        line += char;
+        units += nextUnits;
+        index += 1;
     }
-
-    if (cursor && lines.length) {
+    if (line && lines.length < maxLines) {
+        lines.push(line.trim());
+    }
+    if (index < chars.length && lines.length) {
         const lastIndex = lines.length - 1;
-        lines[lastIndex] = `${lines[lastIndex].slice(0, Math.max(0, maxChars - 3)).trim()}...`;
+        lines[lastIndex] = truncateMemoryGraphTextByUnits(lines[lastIndex], maxChars);
     }
 
     return lines.filter(Boolean);
 }
 
 function renderMemoryGraphSvgTextLines(lines, className, x, y, lineHeight = 14) {
-    const safeLines = Array.isArray(lines) && lines.length ? lines : ['\\u6682\\u65e0\\u6458\\u8981'];
+    const safeLines = Array.isArray(lines) && lines.length ? lines : ['暂无摘要'];
     const tspans = safeLines.map((line, index) => (
         `<tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">${escapeHtml(line)}</tspan>`
     )).join('');
     return `<text class="${className}" x="${x}" y="${y}">${tspans}</text>`;
+}
+
+function inferMemoryGraphNodeKind(node = {}) {
+    const explicit = String(node?.memoryKind || node?.kind || node?.dimension || '').trim().toLowerCase();
+    const explicitMatch = MEMORY_GRAPH_KIND_DEFINITIONS.find(item => item.key === explicit || item.label === explicit);
+    if (explicitMatch) {
+        return explicitMatch;
+    }
+    const text = normalizeText([
+        node?.title,
+        node?.summary,
+        node?.content,
+        node?.description,
+        node?.location,
+        node?.timeSpan,
+        ...(Array.isArray(node?.keys) ? node.keys : []),
+        ...(Array.isArray(node?.tags) ? node.tags : []),
+    ].filter(Boolean).join(' '));
+    const cueMatch = MEMORY_GRAPH_KIND_DEFINITIONS.find(item => item.cues.test(text));
+    if (cueMatch) {
+        return cueMatch;
+    }
+    const type = String(node?.type || 'event').toLowerCase();
+    return MEMORY_GRAPH_KIND_DEFINITIONS.find(item => item.types.includes(type))
+        || MEMORY_GRAPH_KIND_DEFINITIONS[0];
+}
+
+function getMemoryGraphNodePreviewChips(node, typeLabel) {
+    const kind = inferMemoryGraphNodeKind(node);
+    const chips = uniqueStrings([
+        kind?.label || typeLabel,
+        node?.location,
+        node?.timeSpan,
+        typeLabel,
+        ...(Array.isArray(node?.tags) ? node.tags : []),
+        ...(Array.isArray(node?.keys) ? node.keys : []),
+    ].filter(Boolean)).slice(0, 5);
+    const visible = chips.slice(0, 2).map(chip => truncateMemoryGraphTextByUnits(chip, 5.6));
+    if (chips.length > visible.length) {
+        visible.push(`+${chips.length - visible.length}`);
+    }
+    return visible;
+}
+
+function renderMemoryGraphSvgChips(chips, x = 12, y = 58) {
+    let offset = 0;
+    return (Array.isArray(chips) ? chips : []).map((chip) => {
+        const label = String(chip || '').trim();
+        if (!label) {
+            return '';
+        }
+        const width = Math.min(66, Math.max(28, getMemoryGraphTextUnits(label) * 7 + 14));
+        const html = `<g class="ai-wbr-memory-node-chip" transform="translate(${x + offset},${y})">
+            <rect width="${width}" height="17" rx="8.5" ry="8.5"></rect>
+            <text x="${width / 2}" y="11.5">${escapeHtml(label)}</text>
+        </g>`;
+        offset += width + 5;
+        return html;
+    }).join('');
 }
 
 function getMemoryGraphNodeScore(node, degree = 0, index = 0) {
@@ -7780,6 +7892,7 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
         : null;
     if (selectedNode) {
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, selectedNode.type, selectedNode.type || 'event');
+        const kindLabel = inferMemoryGraphNodeKind(selectedNode)?.label || typeLabel;
         const relatedLinks = graph.links.filter(link => link.source === selectedNode.id || link.target === selectedNode.id);
         const sourceTitle = memoryGraphLinkSourceId
             ? graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId
@@ -7803,10 +7916,12 @@ function renderMemoryDetailDrawer(graph = getMemoryGraph()) {
         drawer.empty().addClass('open').append(
             $('<div class="ai-wbr-memory-detail-head"></div>')
                 .append($('<div></div>')
-                    .append($('<div class="ai-wbr-memory-detail-kicker"></div>').text(typeLabel))
+                    .append($('<div class="ai-wbr-memory-detail-kicker"></div>').text(`${kindLabel} · ${typeLabel}`))
                     .append($('<h3></h3>').text(selectedNode.title || selectedNode.id)))
                 .append($('<button class="menu_button ai-wbr-memory-detail-close" type="button">关闭</button>')),
             $('<div class="ai-wbr-memory-detail-grid"></div>')
+                .append(createMeta('记忆维度', kindLabel))
+                .append(createMeta('节点类型', typeLabel))
                 .append(createMeta('重要度', `${Math.round(clampNumber(selectedNode.importance, 0.5, 0, 1) * 100)}%`))
                 .append(createMeta('可信度', `${Math.round(clampNumber(selectedNode.credibility, 0.8, 0, 1) * 100)}%`))
                 .append(createMeta('地点', selectedNode.location || ''))
@@ -7968,26 +8083,26 @@ function renderMemoryGraphSvg(graph) {
         const colorClass = `ai-wbr-memory-node-${escapeHtml(rawType.toLowerCase())}`;
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rawType, rawType);
         const temporalMeta = [node.location, node.timeSpan].filter(Boolean).join(' · ');
-        const subtitle = [node.summary || node.content || '', temporalMeta ? `[${temporalMeta}]` : ''].filter(Boolean).join(' ');
-        const titleLines = splitMemoryGraphSvgText(node.title || node.id, 13, 1);
-        const subtitleLines = splitMemoryGraphSvgText(subtitle || '\u6682\u65e0\u6458\u8981', 16, 2);
-        const safeTypeLabel = truncateText(typeLabel, 8);
-        const badgeWidth = Math.min(92, Math.max(38, safeTypeLabel.length * 11 + 14));
+        const summaryText = node.summary || node.content || '';
+        const titleLines = splitMemoryGraphSvgText(node.title || node.id, 12.2, 1);
+        const subtitleLines = splitMemoryGraphSvgText(summaryText || '暂无摘要', 17.4, 2);
+        const chips = getMemoryGraphNodePreviewChips(node, typeLabel);
         const selectedClass = String(node.id) === String(memoryGraphSelectedNodeId) ? ' ai-wbr-memory-node-selected' : '';
         const searchClass = displayModel.query && getMemoryGraphSearchHaystack(node).includes(displayModel.query) ? ' ai-wbr-memory-node-search-hit' : '';
         const importanceLabel = `${Math.round(clampNumber(node.importance, 0.5, 0, 1) * 100)}%`;
+        const clipId = `ai-wbr-memory-node-clip-${escapeHtml(String(node.id || '').replace(/[^a-zA-Z0-9_-]/g, '-'))}`;
         return `<g class="ai-wbr-memory-node ${colorClass}${selectedClass}${searchClass}" data-memory-node-id="${escapeHtml(node.id)}" transform="translate(${position.x},${position.y})">
+            <clipPath id="${clipId}"><rect x="3" y="3" width="${MEMORY_GRAPH_NODE_WIDTH - 6}" height="${MEMORY_GRAPH_NODE_HEIGHT - 6}" rx="12" ry="12"></rect></clipPath>
             <rect class="ai-wbr-memory-node-card" x="0" y="0" width="${MEMORY_GRAPH_NODE_WIDTH}" height="${MEMORY_GRAPH_NODE_HEIGHT}" rx="14" ry="14"></rect>
-            <circle class="ai-wbr-memory-node-accent" cx="16" cy="16" r="4"></circle>
-            ${renderMemoryGraphSvgTextLines(titleLines, 'ai-wbr-memory-node-title', 28, 21, 13)}
-            ${renderMemoryGraphSvgTextLines(subtitleLines, 'ai-wbr-memory-node-subtitle-lines', 14, 39, 13)}
-            <text class="ai-wbr-memory-node-subtitle" x="14" y="42">${escapeHtml(truncateText(subtitle, 32) || '暂无摘要')}</text>
-            <g class="ai-wbr-memory-node-badge" transform="translate(12,56)">
-                <rect width="${badgeWidth}" height="18" rx="9" ry="9"></rect>
-                <text x="${badgeWidth / 2}" y="12">${escapeHtml(safeTypeLabel)}</text>
+            <g clip-path="url(#${clipId})">
+                <circle class="ai-wbr-memory-node-accent" cx="15" cy="15" r="4"></circle>
+                ${renderMemoryGraphSvgTextLines(titleLines, 'ai-wbr-memory-node-title', 26, 20, 13)}
+                ${renderMemoryGraphSvgTextLines(subtitleLines, 'ai-wbr-memory-node-subtitle-lines', 12, 38, 12.5)}
+                <text class="ai-wbr-memory-node-subtitle" x="12" y="42">${escapeHtml(truncateText(summaryText, 32) || '暂无摘要')}</text>
+                ${renderMemoryGraphSvgChips(chips, 12, 58)}
+                <text class="ai-wbr-memory-node-score" x="160" y="70">${escapeHtml(importanceLabel)}</text>
             </g>
-            <text class="ai-wbr-memory-node-score" x="154" y="68">${escapeHtml(importanceLabel)}</text>
-            <title>${escapeHtml(`${node.title}\n${temporalMeta ? `${temporalMeta}\n` : ''}${node.content || ''}`)}</title>
+            <title>${escapeHtml(`${node.title || node.id}\n${temporalMeta ? `${temporalMeta}\n` : ''}${node.content || node.summary || ''}`)}</title>
         </g>`;
     }).join('');
 

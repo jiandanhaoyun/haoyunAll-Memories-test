@@ -1734,8 +1734,8 @@
 
 .ai-wbr-memory-node-title {
     fill: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 92%, #ece7ff 8%);
-    font-size: 0.92rem;
-    font-weight: 700;
+    font-size: 0.86rem;
+    font-weight: 800;
     pointer-events: none;
 }
 
@@ -1745,20 +1745,22 @@
 
 .ai-wbr-memory-node-subtitle-lines {
     fill: color-mix(in srgb, var(--SmartThemeBodyColor, #f4f6ff) 74%, rgba(206, 220, 255, 0.9) 26%);
-    font-size: 0.74rem;
-    opacity: 0.92;
+    font-size: 0.68rem;
+    opacity: 0.86;
     pointer-events: none;
 }
 
+.ai-wbr-memory-node-chip rect,
 .ai-wbr-memory-node-badge rect {
     fill: color-mix(in srgb, var(--memory-node-accent) 22%, rgba(12, 18, 30, 0.88) 78%);
     stroke: color-mix(in srgb, var(--memory-node-accent) 60%, rgba(255, 255, 255, 0.2) 40%);
     stroke-width: 1;
 }
 
+.ai-wbr-memory-node-chip text,
 .ai-wbr-memory-node-badge text {
     fill: color-mix(in srgb, var(--memory-node-accent) 88%, white 12%);
-    font-size: 0.68rem;
+    font-size: 0.6rem;
     font-weight: 700;
     text-anchor: middle;
     pointer-events: none;
