@@ -3721,3 +3721,101 @@
         justify-content: center;
     }
 }
+
+/* ===== Graph: compact single-row toolbar + filter drawer ===== */
+.ai-wbr-memory-graph-toolbar-compact {
+    padding: 0.4rem 0.6rem;
+    gap: 0.35rem;
+}
+
+.ai-wbr-memory-graph-row-primary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.ai-wbr-memory-graph-modes {
+    display: inline-flex;
+    gap: 0.25rem;
+}
+
+.ai-wbr-memory-graph-toolbar-compact .ai-wbr-memory-graph-search {
+    flex: 1 1 8rem;
+    min-width: 8rem;
+    margin: 0;
+}
+
+.ai-wbr-memory-graph-toolbar-compact .ai-wbr-memory-graph-summary {
+    margin: 0;
+    white-space: nowrap;
+    opacity: 0.8;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ai-wbr-memory-graph-filter-toggle {
+    flex: 0 0 auto;
+}
+
+.ai-wbr-memory-graph-toolbar-compact .ai-wbr-memory-graph-drawer {
+    margin: 0;
+}
+
+.ai-wbr-memory-graph-drawer > summary.ai-wbr-memory-graph-drawer-hint {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.2rem 0;
+    font-size: 0.74rem;
+    opacity: 0.7;
+    user-select: none;
+}
+
+.ai-wbr-memory-graph-drawer > summary.ai-wbr-memory-graph-drawer-hint::-webkit-details-marker {
+    display: none;
+}
+
+.ai-wbr-memory-graph-drawer > summary.ai-wbr-memory-graph-drawer-hint::before {
+    content: '▸ ';
+}
+
+.ai-wbr-memory-graph-drawer[open] > summary.ai-wbr-memory-graph-drawer-hint::before {
+    content: '▾ ';
+}
+
+.ai-wbr-memory-graph-drawer-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0 0.1rem;
+    border-top: 1px solid rgba(176, 225, 255, 0.12);
+    margin-top: 0.3rem;
+}
+
+.ai-wbr-memory-graph-drawer-body .ai-wbr-memory-graph-typebar {
+    margin: 0;
+    flex: 1 1 100%;
+}
+
+.ai-wbr-memory-graph-drawer-body .ai-wbr-memory-weight-filter {
+    margin: 0;
+}
+
+@media (max-width: 640px) {
+    .ai-wbr-memory-graph-row-primary {
+        gap: 0.3rem;
+    }
+    .ai-wbr-memory-graph-toolbar-compact .ai-wbr-memory-graph-search {
+        flex: 1 1 100%;
+        order: 5;
+    }
+}
+
+/* touch: disable double-tap text selection interference on the svg canvas */
+.ai-wbr-memory-graph svg {
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}

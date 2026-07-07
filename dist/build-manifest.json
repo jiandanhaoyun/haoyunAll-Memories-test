@@ -1,13 +1,13 @@
 {
   "name": "AI Worldbook Router",
   "id": "ai_worldbook_router",
-  "version": "0.6.18",
-  "generatedAt": "2026-07-07T03:10:50.566Z",
+  "version": "0.6.19",
+  "generatedAt": "2026-07-07T03:57:00.719Z",
   "files": [
     {
       "file": "manifest.json",
       "bytes": 519,
-      "modifiedAt": "2026-07-07T03:08:23.314Z"
+      "modifiedAt": "2026-07-07T03:56:57.956Z"
     },
     {
       "file": "index.js",
@@ -16,8 +16,8 @@
     },
     {
       "file": "router-core.js",
-      "bytes": 533816,
-      "modifiedAt": "2026-07-07T03:05:32.233Z"
+      "bytes": 536462,
+      "modifiedAt": "2026-07-07T03:53:16.827Z"
     },
     {
       "file": "settings.html",
@@ -26,8 +26,8 @@
     },
     {
       "file": "style.css",
-      "bytes": 89072,
-      "modifiedAt": "2026-07-07T03:07:19.251Z"
+      "bytes": 91257,
+      "modifiedAt": "2026-07-07T03:55:16.104Z"
     }
   ]
 }

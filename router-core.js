@@ -37,13 +37,13 @@ const MAX_BURST_ITEMS = 5;
 const MAX_MEMORY_CONTEXT_PREVIEW = 260;
 const MAX_MEMORY_SELECTED = 4;
 const CHAT_MEMORY_FIELD = 'AIWBR_ChatMemory';
-const MEMORY_GRAPH_CANVAS_WIDTH = 760;
-const MEMORY_GRAPH_CANVAS_HEIGHT = 340;
-const MEMORY_GRAPH_NODE_WIDTH = 172;
-const MEMORY_GRAPH_NODE_HEIGHT = 82;
+const MEMORY_GRAPH_CANVAS_WIDTH = 840;
+const MEMORY_GRAPH_CANVAS_HEIGHT = 360;
+const MEMORY_GRAPH_NODE_WIDTH = 196;
+const MEMORY_GRAPH_NODE_HEIGHT = 96;
 const MEMORY_GRAPH_SAFE_PADDING = 12;
 const MEMORY_GRAPH_TOP_SAFE_PADDING = 56;
-const MEMORY_GRAPH_LAYOUT_PADDING = 96;
+const MEMORY_GRAPH_LAYOUT_PADDING = 112;
 const MEMORY_GRAPH_TOUCH_TAP_THRESHOLD = 8;
 const MEMORY_GRAPH_LONG_PRESS_MS = 520;
 const MEMORY_NODE_TYPE_OPTIONS = [
@@ -7203,7 +7203,7 @@ function getMemoryGraphNodePreviewChips(node, typeLabel) {
         ...(Array.isArray(node?.tags) ? node.tags : []),
         ...(Array.isArray(node?.keys) ? node.keys : []),
     ].filter(Boolean)).slice(0, 5);
-    const visible = chips.slice(0, 2).map(chip => truncateMemoryGraphTextByUnits(chip, 5.6));
+    const visible = chips.slice(0, 3).map(chip => truncateMemoryGraphTextByUnits(chip, 8.4));
     if (chips.length > visible.length) {
         visible.push(`+${chips.length - visible.length}`);
     }
@@ -7217,7 +7217,7 @@ function renderMemoryGraphSvgChips(chips, x = 12, y = 58) {
         if (!label) {
             return '';
         }
-        const width = Math.min(66, Math.max(28, getMemoryGraphTextUnits(label) * 7 + 14));
+        const width = Math.min(78, Math.max(28, getMemoryGraphTextUnits(label) * 7 + 14));
         const html = `<g class="ai-wbr-memory-node-chip" transform="translate(${x + offset},${y})">
             <rect width="${width}" height="17" rx="8.5" ry="8.5"></rect>
             <text x="${width / 2}" y="11.5">${escapeHtml(label)}</text>
@@ -7748,28 +7748,29 @@ function getMemoryTimelineRelatedNodes(graph, node, typeNames = []) {
 
 function renderMemoryGraphToolbarHtml(graph, displayModel, nodes, edges) {
     const fullscreenLabel = memoryGraphFullscreenActive ? '退出全屏' : '全屏图谱';
+    const hiddenHint = displayModel.hiddenNodes || displayModel.hiddenLinks ? `，收起 ${displayModel.hiddenNodes}/${displayModel.hiddenLinks}` : '';
+    const linkHint = memoryGraphLinkSourceId ? ` · 起点：${escapeHtml(truncateText(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId, 8))}` : '';
     return `
-        <div class="ai-wbr-memory-graph-toolbar">
-            <div class="ai-wbr-memory-graph-row">
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'timeline' ? 'active' : ''}" type="button" data-memory-graph-mode="timeline">时间线</button>
-                <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
-                <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
+        <div class="ai-wbr-memory-graph-toolbar ai-wbr-memory-graph-toolbar-compact">
+            <div class="ai-wbr-memory-graph-row ai-wbr-memory-graph-row-primary">
+                <div class="ai-wbr-memory-graph-modes">
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'overview' ? 'active' : ''}" type="button" data-memory-graph-mode="overview">概览</button>
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'focus' ? 'active' : ''}" type="button" data-memory-graph-mode="focus" ${memoryGraphSelectedNodeId ? '' : 'disabled'}>聚焦</button>
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'timeline' ? 'active' : ''}" type="button" data-memory-graph-mode="timeline">时间线</button>
+                    <button class="menu_button ai-wbr-memory-mode ${displayModel.mode === 'full' ? 'active' : ''}" type="button" data-memory-graph-mode="full">全量</button>
+                </div>
+                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索节点、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
+                <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} · ${edges.length}/${displayModel.totalLinks}${hiddenHint}${linkHint}</div>
+                <button class="menu_button ai-wbr-memory-graph-filter-toggle" type="button" aria-expanded="false">筛选</button>
             </div>
-            <div class="ai-wbr-memory-graph-row">
-                <input class="text_pole ai-wbr-memory-graph-search" type="search" placeholder="搜索人物、地点、事件、关键词" value="${escapeHtml(memoryGraphSearchText)}" />
-                <label class="ai-wbr-memory-weight-filter">关系≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
-            </div>
-            ${renderMemoryGraphTypeFilters(graph)}
-            <div class="ai-wbr-memory-graph-row ai-wbr-memory-graph-statusbar">
-                <div class="ai-wbr-memory-graph-summary">显示 ${nodes.length}/${displayModel.totalNodes} 节点，${edges.length}/${displayModel.totalLinks} 关系${displayModel.hiddenNodes || displayModel.hiddenLinks ? `，已收起 ${displayModel.hiddenNodes} 节点 / ${displayModel.hiddenLinks} 关系` : ''}</div>
-                <button class="menu_button ai-wbr-memory-zoom-in" type="button">＋</button>
-                <button class="menu_button ai-wbr-memory-zoom-out" type="button">－</button>
-                <button class="menu_button ai-wbr-memory-zoom-reset" type="button">适配视图</button>
-                <button class="menu_button ai-wbr-memory-open-fullscreen" type="button">${fullscreenLabel}</button>
-                <span class="ai-wbr-memory-link-hint">${memoryGraphLinkSourceId ? `连线起点：${escapeHtml(graph.nodes.find(node => node.id === memoryGraphLinkSourceId)?.title || memoryGraphLinkSourceId)}` : ''}</span>
-            </div>
+            <details class="ai-wbr-memory-graph-drawer">
+                <summary class="ai-wbr-memory-graph-drawer-hint">类型 / 关系权重筛选（点击展开）</summary>
+                <div class="ai-wbr-memory-graph-drawer-body">
+                    ${renderMemoryGraphTypeFilters(graph)}
+                    <label class="ai-wbr-memory-weight-filter">关系权重≥<span>${Math.round(displayModel.minWeight * 100)}%</span><input class="ai-wbr-memory-link-weight" type="range" min="0" max="1" step="0.05" value="${displayModel.minWeight}" /></label>
+                    <button class="menu_button ai-wbr-memory-clear-filters" type="button">清除筛选</button>
+                </div>
+            </details>
         </div>
     `;
 }
@@ -8112,8 +8113,8 @@ function renderMemoryGraphSvg(graph) {
         const typeLabel = getOptionLabel(MEMORY_NODE_TYPE_OPTIONS, rawType, rawType);
         const temporalMeta = [node.location, node.timeSpan].filter(Boolean).join(' · ');
         const summaryText = node.summary || node.content || '';
-        const titleLines = splitMemoryGraphSvgText(node.title || node.id, 12.2, 1);
-        const subtitleLines = splitMemoryGraphSvgText(summaryText || '暂无摘要', 17.4, 2);
+        const titleLines = splitMemoryGraphSvgText(node.title || node.id, 15.5, 2);
+        const subtitleLines = splitMemoryGraphSvgText(summaryText || '暂无摘要', 21, 2);
         const chips = getMemoryGraphNodePreviewChips(node, typeLabel);
         const selectedClass = String(node.id) === String(memoryGraphSelectedNodeId) ? ' ai-wbr-memory-node-selected' : '';
         const searchClass = displayModel.query && getMemoryGraphSearchHaystack(node).includes(displayModel.query) ? ' ai-wbr-memory-node-search-hit' : '';
@@ -8126,11 +8127,11 @@ function renderMemoryGraphSvg(graph) {
             <rect class="ai-wbr-memory-node-card" x="0" y="0" width="${MEMORY_GRAPH_NODE_WIDTH}" height="${MEMORY_GRAPH_NODE_HEIGHT}" rx="14" ry="14"></rect>
             <g clip-path="url(#${clipId})">
                 <circle class="ai-wbr-memory-node-accent" cx="15" cy="15" r="4"></circle>
-                ${renderMemoryGraphSvgTextLines(titleLines, 'ai-wbr-memory-node-title', 26, 20, 13)}
-                ${renderMemoryGraphSvgTextLines(subtitleLines, 'ai-wbr-memory-node-subtitle-lines', 12, 38, 12.5)}
-                <text class="ai-wbr-memory-node-subtitle" x="12" y="42">${escapeHtml(truncateText(summaryText, 32) || '暂无摘要')}</text>
-                ${renderMemoryGraphSvgChips(chips, 12, 58)}
-                <text class="ai-wbr-memory-node-score" x="160" y="70">${escapeHtml(importanceLabel)}</text>
+                ${renderMemoryGraphSvgTextLines(titleLines, 'ai-wbr-memory-node-title', 26, 18, 13)}
+                ${renderMemoryGraphSvgTextLines(subtitleLines, 'ai-wbr-memory-node-subtitle-lines', 12, 44, 12.5)}
+                <text class="ai-wbr-memory-node-subtitle" x="12" y="48">${escapeHtml(truncateText(summaryText, 32) || '暂无摘要')}</text>
+                ${renderMemoryGraphSvgChips(chips, 12, 68)}
+                <text class="ai-wbr-memory-node-score" x="184" y="88">${escapeHtml(importanceLabel)}</text>
             </g>
             <title>${escapeHtml(`${node.title || node.id}\n${temporalMeta ? `${temporalMeta}\n` : ''}${node.content || node.summary || ''}`)}</title>
         </g>`;
@@ -8577,6 +8578,27 @@ function updateMemoryGraphViewBox(svg) {
         return;
     }
     svg.setAttribute('viewBox', `${memoryGraphView.x} ${memoryGraphView.y} ${memoryGraphView.width} ${memoryGraphView.height}`);
+}
+
+function zoomMemoryGraphAt(svg, clientX, clientY, factor) {
+    if (!svg || !memoryGraphView || !Number.isFinite(factor) || factor <= 0) {
+        return;
+    }
+    const svgPoint = getMemoryGraphSvgPoint(svg, clientX, clientY);
+    const nextWidth = Math.min(1400, Math.max(120, memoryGraphView.width * factor));
+    const nextHeight = Math.min(900, Math.max(80, memoryGraphView.height * factor));
+    if (Math.abs(nextWidth - memoryGraphView.width) < 0.5 && Math.abs(nextHeight - memoryGraphView.height) < 0.5) {
+        return;
+    }
+    const ratioX = (svgPoint.x - memoryGraphView.x) / memoryGraphView.width;
+    const ratioY = (svgPoint.y - memoryGraphView.y) / memoryGraphView.height;
+    memoryGraphView = {
+        x: svgPoint.x - (nextWidth * ratioX),
+        y: svgPoint.y - (nextHeight * ratioY),
+        width: nextWidth,
+        height: nextHeight,
+    };
+    updateMemoryGraphViewBox(svg);
 }
 
 function getMemoryGraphViewportMetrics(containerEl) {
@@ -9098,37 +9120,83 @@ function bindMemoryGraphSvgInteractions() {
     container.on('wheel.memoryGraphSvg', 'svg', function (event) {
         event.preventDefault();
         const original = event.originalEvent;
-        const svgPoint = getMemoryGraphSvgPoint(svg, original.clientX, original.clientY);
         const factor = original.deltaY < 0 ? 0.88 : 1.14;
-        const nextWidth = Math.min(1400, Math.max(120, memoryGraphView.width * factor));
-        const nextHeight = Math.min(900, Math.max(80, memoryGraphView.height * factor));
-        const ratioX = (svgPoint.x - memoryGraphView.x) / memoryGraphView.width;
-        const ratioY = (svgPoint.y - memoryGraphView.y) / memoryGraphView.height;
-        memoryGraphView = {
-            x: svgPoint.x - (nextWidth * ratioX),
-            y: svgPoint.y - (nextHeight * ratioY),
-            width: nextWidth,
-            height: nextHeight,
-        };
-        updateMemoryGraphViewBox(svg);
+        zoomMemoryGraphAt(svg, original.clientX, original.clientY, factor);
     });
 
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-in', () => {
-        memoryGraphView.width = Math.max(120, memoryGraphView.width * 0.82);
-        memoryGraphView.height = Math.max(80, memoryGraphView.height * 0.82);
-        updateMemoryGraphViewBox(svg);
+    let dblClickTimer = null;
+    container.on('dblclick.memoryGraphSvg', 'svg', function (event) {
+        event.preventDefault();
+        if (memoryGraphPan || memoryGraphDrag) {
+            return;
+        }
+        const original = event.originalEvent || event;
+        const baseWidth = MEMORY_GRAPH_CANVAS_WIDTH;
+        const zoomingIn = memoryGraphView.width > baseWidth * 0.7;
+        zoomMemoryGraphAt(svg, original.clientX, original.clientY, zoomingIn ? 0.5 : 2);
+        if (dblClickTimer) {
+            clearTimeout(dblClickTimer);
+        }
+        dblClickTimer = setTimeout(() => { dblClickTimer = null; }, 350);
     });
 
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-out', () => {
-        memoryGraphView.width = Math.min(1400, memoryGraphView.width * 1.18);
-        memoryGraphView.height = Math.min(900, memoryGraphView.height * 1.18);
-        updateMemoryGraphViewBox(svg);
-    });
+    const activePointers = new Map();
+    let pinchState = null;
 
-    container.on('click.memoryGraphSvg', '.ai-wbr-memory-zoom-reset', () => {
-        fitMemoryGraphToNodes(buildMemoryGraphDisplayModel(getMemoryGraph()).nodes, container[0]);
-        updateMemoryGraphViewBox(svg);
-    });
+    container[0]?.addEventListener('pointerdown', (nativeEvent) => {
+        if (!nativeEvent.isTrusted && nativeEvent.pointerType === 'mouse') {
+            return;
+        }
+        activePointers.set(nativeEvent.pointerId, { x: nativeEvent.clientX, y: nativeEvent.clientY });
+        if (activePointers.size === 2) {
+            const [a, b] = [...activePointers.values()];
+            pinchState = {
+                startDist: Math.hypot(a.x - b.x, a.y - b.y),
+                midX: (a.x + b.x) / 2,
+                midY: (a.y + b.y) / 2,
+                lastDist: Math.hypot(a.x - b.x, a.y - b.y),
+            };
+            if (memoryGraphPan) {
+                memoryGraphPan = null;
+                $(svg).removeClass('ai-wbr-memory-panning');
+            }
+            if (memoryGraphDrag?.longPressTimer) {
+                clearTimeout(memoryGraphDrag.longPressTimer);
+                memoryGraphDrag.longPressTimer = null;
+            }
+        }
+    }, { passive: true });
+
+    container[0]?.addEventListener('pointermove', (nativeEvent) => {
+        if (!activePointers.has(nativeEvent.pointerId)) {
+            activePointers.set(nativeEvent.pointerId, { x: nativeEvent.clientX, y: nativeEvent.clientY });
+            return;
+        }
+        activePointers.set(nativeEvent.pointerId, { x: nativeEvent.clientX, y: nativeEvent.clientY });
+        if (!pinchState || activePointers.size < 2) {
+            return;
+        }
+        const [a, b] = [...activePointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const factor = pinchState.lastDist / Math.max(1, dist);
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        zoomMemoryGraphAt(svg, midX, midY, factor);
+        pinchState.lastDist = dist;
+        pinchState.midX = midX;
+        pinchState.midY = midY;
+        nativeEvent.preventDefault?.();
+    }, { passive: false });
+
+    const releasePointer = (nativeEvent) => {
+        activePointers.delete(nativeEvent.pointerId);
+        if (activePointers.size < 2) {
+            pinchState = null;
+        }
+    };
+    container[0]?.addEventListener('pointerup', releasePointer, { passive: true });
+    container[0]?.addEventListener('pointercancel', releasePointer, { passive: true });
+    container[0]?.addEventListener('pointerleave', releasePointer, { passive: true });
 
     container.on('pointerdown.memoryGraphSvg', '.ai-wbr-memory-node', function (event) {
         const nodeId = String($(this).data('memoryNodeId'));
